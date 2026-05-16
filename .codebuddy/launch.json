@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chrome: 调试前端",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}",
+      "sourceMapPathOverrides": {
+        "webpack:///./~/*": "${workspaceFolder}/node_modules/*",
+        "webpack:///./*": "${workspaceFolder}/*"
+      },
+      "preLaunchTask": "启动开发服务器"
+    },
+    {
+      "name": "Chrome: 附加到运行中的应用 (CDP 9222)",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "LoRA Dataset Tagger Pro",
+  "description": "A professional tool for tagging LoRA training datasets with AI-powered automatic captioning using Gemini 3 Vision.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "启动开发服务器",
+      "type": "shell",
+      "command": "npm run dev",
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "vite",
+        "fileLocation": "relative",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (error|warning) (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in"
+        }
+      }
+    },
+    {
+      "label": "生产构建",
+      "type": "shell",
+      "command": "npm run build",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "预览生产构建",
+      "type": "shell",
+      "command": "npm run preview",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}
