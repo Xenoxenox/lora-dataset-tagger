@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
+        // The Gemini SDK codepath reads process.env.API_KEY in the browser bundle.
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },

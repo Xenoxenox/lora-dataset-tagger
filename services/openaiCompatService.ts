@@ -1,6 +1,7 @@
 
 import { TagData, CustomAPIConfig } from "../types";
 
+// Mirrors the Gemini prompt so both providers return the same editable TagData shape.
 const TAGGING_SYSTEM_PROMPT = `You are a high-precision image captioning expert for Stable Diffusion LoRA training.
 Analyze the image provided and extract descriptive tags.
 Rules:
@@ -15,6 +16,7 @@ export async function autoTagImageOpenAI(
   mimeType: string,
   config: CustomAPIConfig
 ): Promise<TagData> {
+  // Accept either a bare API root or a trailing-slash root from user settings.
   const url = config.baseUrl.endsWith('/')
     ? `${config.baseUrl}chat/completions`
     : `${config.baseUrl}/chat/completions`;
@@ -65,7 +67,7 @@ export async function autoTagImageOpenAI(
     throw new Error("Empty response from API");
   }
 
-  // Extract JSON from markdown code blocks if present
+  // Some compatible providers wrap JSON in markdown despite the instruction to return raw JSON.
   let jsonStr = content.trim();
   const jsonMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
   if (jsonMatch) {

@@ -13,6 +13,7 @@ export interface TagData {
   other: string;
 }
 
+// Runtime image state keeps the mutable browser File alongside its caption fields.
 export interface TaggedImage {
   id: string;
   file: File;
@@ -24,6 +25,7 @@ export interface TaggedImage {
 
 export type TagField = keyof TagData;
 
+// Defaults are part of the NewbieLoraTrainer caption contract, not just UI placeholders.
 export const DEFAULT_TAGS: TagData = {
   character: "",
   style: "sayori style, sayori",
@@ -38,6 +40,7 @@ export const DEFAULT_TAGS: TagData = {
   other: "masterpiece, best quality"
 };
 
+// Optional OpenAI-compatible endpoint used when the built-in Gemini path is not desired.
 export interface CustomAPIConfig {
   enabled: boolean;
   baseUrl: string;

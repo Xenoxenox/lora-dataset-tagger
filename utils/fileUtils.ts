@@ -5,7 +5,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
     reader.onload = () => {
       const result = reader.result as string;
-      // Remove the prefix (e.g., "data:image/png;base64,")
+      // Vision APIs expect the raw payload; callers pass MIME type separately.
       resolve(result.split(',')[1]);
     };
     reader.onerror = error => reject(error);
@@ -13,6 +13,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const downloadTextFile = (content: string, filename: string) => {
+  // Anchor-click download keeps exports client-only; no dataset data leaves the browser.
   const blob = new Blob([content], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

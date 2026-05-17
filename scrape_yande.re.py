@@ -1,3 +1,9 @@
+"""Download yande.re images and LoRA-ready caption files by artist tag.
+
+Outputs are written to ./dataset so they stay inside the app's dataset scope.
+Each downloaded image gets a sibling .txt file with comma-separated tags.
+"""
+
 import requests
 import time
 import os
@@ -5,12 +11,13 @@ import json
 import re
 from urllib.parse import urlparse
 
-# POOL_ID = 5022，画廊爬取方案
-ARTIST_TAG = "mignon"   # 画师爬取方案（yande.re 不用 artist: 前缀，直接用 tag 名）
+# yande.re 的画师检索直接使用 tag 名，不使用 Danbooru 风格的 artist: 前缀。
+ARTIST_TAG = "mignon"
 BASE_URL = "https://yande.re"
 SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
+# yande.re API 对默认客户端较敏感，保留明确 User-Agent 便于服务端识别请求来源。
 HEADERS = {"User-Agent": "YandeRe-API-Crawler (litardphobia@gmail.com)"}
 
 def clean_filename(name: str) -> str:
@@ -19,6 +26,7 @@ def clean_filename(name: str) -> str:
     name = re.sub(r'_+', '_', name).strip('_')
     return name[:64]  # 截断过长文件名
 
+# 汇总元数据便于后续排查来源、补下载或重建 caption。
 metadata = {}
 page = 1
 total = 0
@@ -27,6 +35,7 @@ total = 0
 print(f"开始爬取 yande.re aritst/{ARTIST_TAG}...")
 
 while True:
+    # API 每页最多请求 100 条；空页表示该 tag 已无更多结果。
     api_url = f"{BASE_URL}/post.json?tags={ARTIST_TAG}&limit=100&page={page}"
     print(f"\n[页 {page}] 请求: {api_url}")
 
@@ -61,7 +70,7 @@ while True:
         img_path = os.path.join(SAVE_DIR, f"{clean_name}{ext}")
         tags_path = os.path.join(SAVE_DIR, f"{clean_name}.txt")
 
-        # 断点续传：已存在则跳过
+        # 断点续传：图片和 caption 都存在时跳过，避免重复下载覆盖人工修订的标签。
         if os.path.exists(img_path) and os.path.exists(tags_path):
             print(f"  [{post_id}] 已存在，跳过")
             metadata[str(post_id)] = {
@@ -99,10 +108,10 @@ while True:
         else:
             print(f"  [{post_id}] 图片下载失败: HTTP {img_resp.status_code}")
 
-        time.sleep(0.5)
+        time.sleep(0.5)  # 图片级限速，降低对源站压力。
 
     page += 1
-    time.sleep(1)
+    time.sleep(1)  # 页级限速，避免连续 API 请求过快。
 
 # 保存汇总元数据
 meta_path = os.path.join(SAVE_DIR, "metadata.json")

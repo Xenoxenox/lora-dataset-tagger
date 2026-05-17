@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TagData } from "../types";
 
+// Keep the model response aligned to TagData so UI editing and .txt export stay deterministic.
 const TAGGING_SYSTEM_PROMPT = `You are a high-precision image captioning expert for Stable Diffusion LoRA training. 
 Analyze the image provided and extract descriptive tags. 
 Rules:
@@ -12,7 +13,7 @@ Rules:
 5. If the image is anime-style, identify common tropes.`;
 
 export async function autoTagImage(base64Data: string, mimeType: string): Promise<TagData> {
-  // Always use process.env.API_KEY directly when initializing GoogleGenAI
+  // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const response = await ai.models.generateContent({

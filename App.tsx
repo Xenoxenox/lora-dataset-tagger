@@ -162,6 +162,7 @@ const App: React.FC = () => {
       const base64 = await fileToBase64(currentImage.file);
       let aiTags: TagData;
 
+      // Custom endpoints must be OpenAI chat-completions compatible.
       if (apiConfig.enabled && apiConfig.baseUrl && apiConfig.apiKey && apiConfig.model) {
         aiTags = await autoTagImageOpenAI(base64, currentImage.file.type, apiConfig);
       } else {
@@ -172,6 +173,7 @@ const App: React.FC = () => {
         const updated = [...prev];
         const existingTags = updated[currentIndex].tags;
         const mergedTags = { ...aiTags };
+        // Frozen fields preserve manually curated character/style anchors across AI runs.
         (Object.keys(frozenFields) as TagField[]).forEach(f => {
           if (frozenFields[f]) mergedTags[f] = existingTags[f];
         });
@@ -200,6 +202,7 @@ const App: React.FC = () => {
       const { naturalWidth: width, naturalHeight: height } = img;
       const longestSide = Math.max(width, height);
 
+      // NewbieLoraTrainer buckets by aspect ratio, so this tool only downsizes oversized images.
       if (longestSide <= resizeMaxSide) {
         setShowResizeDialog(false);
         setStatus({ message: t.resize.skipped(width, height), type: 'info' });
@@ -263,6 +266,7 @@ const App: React.FC = () => {
   }, [currentIndex, frozenFields, frozenValues, currentImage]);
 
   const getFormattedCaption = (img: TaggedImage) => {
+    // Newbie prompts treat style as an explicit style block before the remaining Danbooru tags.
     const { style, ...rest } = img.tags;
     const parts: string[] = [];
     if (style?.trim()) {
