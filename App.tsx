@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig } from './types';
 import { autoTagImage } from './services/geminiService';
 import { autoTagImageOpenAI } from './services/openaiCompatService';
@@ -28,7 +28,7 @@ const IconLang = () => (
 const IconQuestion = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 );
-const IconCrop = () => (
+const IconResize = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-7 7m7-7L5 5" /></svg>
 );
 const IconSettings = () => (
@@ -48,7 +48,7 @@ const App: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showCropper, setShowCropper] = useState(false);
+  const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   const [memoizeConfig, setMemoizeConfig] = useState<boolean>(() => {
@@ -73,11 +73,7 @@ const App: React.FC = () => {
   });
   const [frozenValues, setFrozenValues] = useState<TagData>({ ...DEFAULT_TAGS });
 
-  // Cropper specific state
-  const [cropRatio, setCropRatio] = useState<string>("1:1");
-  const [cropRes, setCropRes] = useState<number>(1024);
-  const cropperImageRef = useRef<HTMLImageElement>(null);
-  const [cropBox, setCropBox] = useState({ x: 10, y: 10, w: 80, h: 80 });
+  const [resizeMaxSide, setResizeMaxSide] = useState<number>(1024);
 
   const currentImage = images[currentIndex] || null;
 
@@ -190,54 +186,60 @@ const App: React.FC = () => {
     }
   };
 
-  const handleApplyCrop = async () => {
-    if (!currentImage || !cropperImageRef.current) return;
-    const img = cropperImageRef.current;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const handleApplyResize = async () => {
+    if (!currentImage) return;
 
-    const [rw, rh] = cropRatio.split(':').map(Number);
-    const ratio = rw / rh;
-
-    // Source dimensions (natural)
-    const sw = img.naturalWidth * (cropBox.w / 100);
-    const sh = sw / ratio;
-    const sx = img.naturalWidth * (cropBox.x / 100);
-    const sy = img.naturalHeight * (cropBox.y / 100);
-
-    // Target dimensions constrained by longest edge
-    let tw, th;
-    if (ratio >= 1) {
-      tw = Math.min(cropRes, sw);
-      th = tw / ratio;
-    } else {
-      th = Math.min(cropRes, sh);
-      tw = th * ratio;
-    }
-
-    canvas.width = tw;
-    canvas.height = th;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th);
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const newFile = new File([blob], currentImage.file.name, { type: 'image/jpeg' });
-      const newUrl = URL.createObjectURL(newFile);
-      
-      setImages(prev => {
-        const updated = [...prev];
-        updated[currentIndex] = {
-          ...updated[currentIndex],
-          file: newFile,
-          previewUrl: newUrl,
-          isEdited: true
-        };
-        return updated;
+    try {
+      const img = new Image();
+      img.src = currentImage.previewUrl;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Image failed to load'));
       });
-      setShowCropper(false);
-      setStatus({ message: "Image cropped & resized successfully", type: 'success' });
-    }, 'image/jpeg', 0.95);
+
+      const { naturalWidth: width, naturalHeight: height } = img;
+      const longestSide = Math.max(width, height);
+
+      if (longestSide <= resizeMaxSide) {
+        setShowResizeDialog(false);
+        setStatus({ message: t.resize.skipped(width, height), type: 'info' });
+        return;
+      }
+
+      const scale = resizeMaxSide / longestSide;
+      const targetWidth = Math.round(width * scale);
+      const targetHeight = Math.round(height * scale);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const mimeType = currentImage.file.type || 'image/jpeg';
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const newFile = new File([blob], currentImage.file.name, { type: mimeType });
+        const newUrl = URL.createObjectURL(newFile);
+
+        setImages(prev => {
+          const updated = [...prev];
+          URL.revokeObjectURL(updated[currentIndex].previewUrl);
+          updated[currentIndex] = {
+            ...updated[currentIndex],
+            file: newFile,
+            previewUrl: newUrl,
+            isEdited: true
+          };
+          return updated;
+        });
+        setShowResizeDialog(false);
+        setStatus({ message: t.resize.success(targetWidth, targetHeight), type: 'success' });
+      }, mimeType, 0.95);
+    } catch (e) {
+      setStatus({ message: t.resize.failed, type: 'error' });
+    }
   };
 
   useEffect(() => {
@@ -463,7 +465,7 @@ const App: React.FC = () => {
                   onClick={() => setShowSettings(false)}
                   className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-2xl transition-all active:scale-95"
                 >
-                  {t.crop.cancel}
+                  {t.settings.cancel}
                 </button>
               </div>
             </div>
@@ -471,115 +473,38 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Cropper Modal */}
-      {showCropper && currentImage && (
+      {/* Resize Modal */}
+      {showResizeDialog && currentImage && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[201] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-5xl h-[90vh] rounded-3xl flex overflow-hidden shadow-2xl">
-            {/* Left: Preview & Canvas Area */}
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[80vh] rounded-3xl flex overflow-hidden shadow-2xl">
+            {/* Left: Preview Area */}
             <div className="flex-1 bg-slate-950 relative overflow-hidden flex items-center justify-center p-8">
-              <div className="relative max-w-full max-h-full">
+              <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
                 <img 
-                  ref={cropperImageRef}
                   src={currentImage.previewUrl} 
-                  className="max-w-full max-h-full block opacity-50"
-                  alt="Crop Target"
+                  className="max-w-full max-h-[68vh] block object-contain"
+                  alt="Resize target"
                 />
-                {/* Draggable Crop Frame UI */}
-                <div 
-                  className="absolute border-2 border-dashed border-indigo-400 cursor-move shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"
-                  style={{
-                    left: `${cropBox.x}%`,
-                    top: `${cropBox.y}%`,
-                    width: `${cropBox.w}%`,
-                    aspectRatio: cropRatio.replace(':', '/'),
-                  }}
-                  onMouseDown={(e) => {
-                    const startX = e.clientX;
-                    const startY = e.clientY;
-                    const initialX = cropBox.x;
-                    const initialY = cropBox.y;
-                    const onMouseMove = (moveEvent: MouseEvent) => {
-                      const dx = ((moveEvent.clientX - startX) / (cropperImageRef.current?.clientWidth || 1)) * 100;
-                      const dy = ((moveEvent.clientY - startY) / (cropperImageRef.current?.clientHeight || 1)) * 100;
-                      setCropBox(prev => ({
-                        ...prev,
-                        x: Math.min(Math.max(0, initialX + dx), 100 - prev.w),
-                        y: Math.min(Math.max(0, initialY + dy), 100 - (prev.w / (Number(cropRatio.split(':')[0]) / Number(cropRatio.split(':')[1]))))
-                      }));
-                    };
-                    const onMouseUp = () => {
-                      window.removeEventListener('mousemove', onMouseMove);
-                      window.removeEventListener('mouseup', onMouseUp);
-                    };
-                    window.addEventListener('mousemove', onMouseMove);
-                    window.addEventListener('mouseup', onMouseUp);
-                  }}
-                >
-                   {/* Resize Handle */}
-                  <div 
-                    className="absolute -right-2 -bottom-2 w-5 h-5 bg-indigo-500 rounded-full border-2 border-white cursor-se-resize shadow-lg"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      const startX = e.clientX;
-                      const initialW = cropBox.w;
-                      const onMouseMove = (moveEvent: MouseEvent) => {
-                        const dw = ((moveEvent.clientX - startX) / (cropperImageRef.current?.clientWidth || 1)) * 100;
-                        setCropBox(prev => ({
-                          ...prev,
-                          w: Math.min(Math.max(5, initialW + dw), 100 - prev.x)
-                        }));
-                      };
-                      const onMouseUp = () => {
-                        window.removeEventListener('mousemove', onMouseMove);
-                        window.removeEventListener('mouseup', onMouseUp);
-                      };
-                      window.addEventListener('mousemove', onMouseMove);
-                      window.addEventListener('mouseup', onMouseUp);
-                    }}
-                  />
-                  <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-indigo-600 text-[10px] font-bold rounded uppercase tracking-wider">{cropRatio}</div>
-                </div>
               </div>
             </div>
 
             {/* Right: Controls Area */}
             <div className="w-[340px] border-l border-slate-800 p-8 flex flex-col gap-8 bg-slate-900/50">
               <div>
-                <h3 className="text-xl font-bold mb-2">{t.crop.title}</h3>
-                <p className="text-xs text-slate-500">{t.crop.note}</p>
-              </div>
-
-              {/* Aspect Ratio Selection */}
-              <div className="space-y-3">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.crop.ratio}</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['1:1', '3:4', '4:3', '9:16', '16:9'].map(r => (
-                    <button 
-                      key={r}
-                      onClick={() => {
-                        setCropRatio(r);
-                        setCropBox(prev => ({...prev, w: 50, h: 50}));
-                      }}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        cropRatio === r ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                <h3 className="text-xl font-bold mb-2">{t.resize.title}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">{t.resize.note}</p>
               </div>
 
               {/* Resolution Selection */}
               <div className="space-y-3">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.crop.resolution}</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.resize.resolution}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[512, 768, 1024, 1536].map(res => (
                     <button 
                       key={res}
-                      onClick={() => setCropRes(res)}
+                      onClick={() => setResizeMaxSide(res)}
                       className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        cropRes === res ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                        resizeMaxSide === res ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       {res}px
@@ -590,24 +515,24 @@ const App: React.FC = () => {
 
               {/* GPU Recommendations Tip */}
               <div className="mt-auto p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">GPU Recommendation</div>
+                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">{t.resize.recommendTitle}</div>
                 <p className="text-[11px] leading-relaxed text-amber-100/80 font-mono">
-                  {t.crop.recommend}
+                  {t.resize.recommend}
                 </p>
               </div>
 
               <div className="flex flex-col gap-3">
                 <button 
-                  onClick={handleApplyCrop}
+                  onClick={handleApplyResize}
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
-                  {t.crop.apply}
+                  {t.resize.apply}
                 </button>
                 <button 
-                  onClick={() => setShowCropper(false)}
+                  onClick={() => setShowResizeDialog(false)}
                   className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-2xl transition-all active:scale-95"
                 >
-                  {t.crop.cancel}
+                  {t.resize.cancel}
                 </button>
               </div>
             </div>
@@ -720,8 +645,8 @@ const App: React.FC = () => {
                       {isAutoTagging ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconRobot />}
                       {t.generate}
                     </button>
-                    <button onClick={() => setShowCropper(true)} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95">
-                      <IconCrop /> {t.crop.button}
+                    <button onClick={() => setShowResizeDialog(true)} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95">
+                      <IconResize /> {t.resize.button}
                     </button>
                     <button onClick={saveTags} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95">
                       <IconSave /> {t.export}

@@ -34,15 +34,18 @@ export const translations = {
       step4: "Click 'EXPORT' or 'BATCH EXPORT' (Recommended) to download .txt files matching your image names.",
       close: "Start Tagging"
     },
-    crop: {
-      title: "Crop & Resize Dataset",
-      ratio: "Aspect Ratio",
+    resize: {
+      title: "Resize Dataset Image",
       resolution: "Max Resolution (Longest Edge)",
-      apply: "Apply Crop & Resize",
+      apply: "Apply Resize",
       cancel: "Cancel",
-      note: "Note: Higher resolution requires more VRAM and increases training time.",
+      note: "NewbieLoraTrainer supports resolution bucketing, so images keep their original aspect ratio. This only downsizes images whose longest side exceeds the selected limit.",
+      recommendTitle: "GPU Recommendation",
       recommend: "Recommended: 1536 for 32GB GPU, 1024 for 24GB GPU, 768 for 16GB GPU.",
-      button: "Crop / Resize"
+      button: "Resize",
+      success: (width: number, height: number) => `Resized to ${width}x${height}`,
+      skipped: (width: number, height: number) => `No resize needed (${width}x${height})`,
+      failed: "Image resize failed."
     },
     fields: {
       character: "Character",
@@ -67,6 +70,7 @@ export const translations = {
       model: "Model Name",
       modelPlaceholder: "gpt-4-vision-preview",
       save: "Save",
+      cancel: "Cancel",
       testConnection: "Test Connection",
       saved: "Settings saved successfully",
       testSuccess: "Connection test successful",
@@ -107,15 +111,18 @@ export const translations = {
       step4: "点击“导出当前”或“批量导出”（推荐）以获取与图片名一致的 .txt 文件。",
       close: "开始打标"
     },
-    crop: {
-      title: "图片裁切与像素调整",
-      ratio: "裁切比例",
+    resize: {
+      title: "图片像素调整",
       resolution: "像素上限 (最长边)",
-      apply: "确认裁切并调整",
+      apply: "确认调整",
       cancel: "取消",
-      note: "注意：分辨率越高，显存占用越大，训练时间越长。",
+      note: "NewbieLoraTrainer 支持分辨率分桶，图片会保留原始纵横比。这里仅在最长边超过所选上限时等比缩小。",
+      recommendTitle: "显存建议",
       recommend: "推荐：32GB 显存使用 1536，24GB 显存使用 1024，16GB 显存使用 768。",
-      button: "裁切 / 像素调整"
+      button: "像素调整",
+      success: (width: number, height: number) => `已调整为 ${width}x${height}`,
+      skipped: (width: number, height: number) => `无需调整 (${width}x${height})`,
+      failed: "图片像素调整失败"
     },
     fields: {
       character: "角色",
@@ -140,6 +147,7 @@ export const translations = {
       model: "模型名称",
       modelPlaceholder: "gpt-4-vision-preview",
       save: "保存",
+      cancel: "取消",
       testConnection: "测试连接",
       saved: "设置保存成功",
       testSuccess: "连接测试成功",
