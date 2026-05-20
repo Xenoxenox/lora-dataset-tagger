@@ -21,11 +21,42 @@ Use TypeScript and React functional components. Follow the existing style: two-s
 
 There is currently no configured test runner or `npm test` script. For now, validate changes with `npm run build` and manual checks in the Vite dev server. If adding tests, prefer colocated `*.test.ts` or `*.test.tsx` files and add the corresponding npm script in `package.json`.
 
-For local browser smoke tests, start `npm run dev` and open `http://localhost:3000/`. A known sample image for upload testing is `dataset/meion/1250849.jpg`. Cover the main flows: image import, image preview, parsed caption fields, manual tag editing and final preview updates, Chinese/English language switching, settings/help dialogs, crop/resize dialog controls, single `.txt` export, batch ZIP export, and AI auto-caption generation when API configuration is available. Current non-blocking console findings include `/favicon.ico` returning 404, the Tailwind CDN development warning, and form accessibility issues for missing labels/id/name attributes.
+For local browser smoke tests, start `npm run dev` and open `http://localhost:3000/`. A known sample image for upload testing is `dataset/meion/1250849.jpg`. Cover the main flows: image import, image preview, parsed caption fields, manual tag editing and final preview updates, Chinese/English language switching, settings/help dialogs, crop/resize dialog controls, single `.txt` export, batch ZIP export, and AI auto-caption generation when API configuration is available. Current non-blocking console findings include the Tailwind CDN development warning, and form accessibility issues for missing labels/id/name attributes.
 
 ## Commit & Pull Request Guidelines
 
-The current Git history only shows an initial commit, so no strict commit convention is established. Use short imperative messages such as `Add caption export helper` or `Fix dataset ZIP naming`. Pull requests should include a brief summary, validation steps run, linked issues when available, and screenshots or screen recordings for visible UI changes.
+### Commit messages
+
+采用 Conventional Commits 格式：`<type>: <description>`
+
+| Type | 用途 |
+|------|------|
+| `feat` | 新功能 |
+| `fix` | Bug 修复 |
+| `chore` | 构建、依赖、工具链 |
+| `docs` | 仅文档 |
+| `refactor` | 重构（无功能变化） |
+| `style` | 格式化、代码风格 |
+
+说明用英文短祈使句，小写开头，不加句号。示例：
+- `feat: add batch ZIP export progress bar`
+- `fix: prevent image preview flash on crop`
+- `chore: upgrade vite to 6.2`
+
+### Branch naming
+
+语义分支命名：`<type>/<slug>`
+
+- `feat/<slug>` — 新特性
+- `fix/<slug>` — Bug 修复
+- `chore/<slug>` — 杂项/工具链
+- `docs/<slug>` — 文档更新
+
+示例：`feat/setup-agent-skills`、`fix/zip-export-encoding`
+
+### Pull requests
+
+包含简要说明、验证步骤、相关 issue 链接，UI 变更附带截图或录屏。合并到 `main` 前确保工作区干净。
 
 ## Agent-Specific Instructions
 
