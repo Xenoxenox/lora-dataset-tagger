@@ -44,24 +44,16 @@ const IconChevronRight = () => (
 const IconSettings = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 );
-
-const getAspectRatio = (width: number, height: number) => {
-  if (!width || !height) return '';
-
-  const gcd = (a: number, b: number): number => {
-    let x = Math.abs(a);
-    let y = Math.abs(b);
-    while (y !== 0) {
-      const next = x % y;
-      x = y;
-      y = next;
-    }
-    return x;
-  };
-
-  const divisor = gcd(width, height);
-  return `${width / divisor}:${height / divisor}`;
-};
+const IconExpand = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+  </svg>
+);
+const IconCopy = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
 
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>(() => {
@@ -79,6 +71,7 @@ const App: React.FC = () => {
   const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
+  const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [resizeOriginalDimensions, setResizeOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const [memoizeConfig, setMemoizeConfig] = useState<boolean>(() => {
@@ -346,6 +339,16 @@ const App: React.FC = () => {
     setStatus({ message: t.statusExport(name), type: 'success' });
   };
 
+  const copyOutput = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(captionText);
+      setStatus({ message: 'Output copied', type: 'success' });
+    } catch (e) {
+      setStatus({ message: 'Copy failed', type: 'error' });
+    }
+  };
+
   const handleExportAll = async () => {
     if (images.length === 0 || isExporting) return;
     setIsExporting(true);
@@ -389,7 +392,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans antialiased">
+    <div className="flex flex-col min-h-screen lg:h-screen w-full bg-slate-950 text-slate-100 overflow-y-auto lg:overflow-hidden font-sans antialiased">
       {/* Tutorial Modal */}
       {showTutorial && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
@@ -536,35 +539,28 @@ const App: React.FC = () => {
       {/* Resize Modal */}
       {showResizeDialog && currentImage && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[201] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[80vh] rounded-3xl flex overflow-hidden shadow-2xl min-h-0">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[88vh] lg:h-[80vh] rounded-3xl flex flex-col lg:flex-row overflow-hidden shadow-2xl min-h-0">
             {/* Left: Preview Area */}
-            <div className="flex-1 bg-slate-950 relative overflow-hidden flex items-center justify-center p-8 min-h-0">
+            <div className="flex-1 bg-slate-950 relative overflow-hidden flex items-center justify-center p-6 lg:p-8 min-h-[260px] lg:min-h-0">
               <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
                 <img 
                   src={currentImage.previewUrl} 
-                  className="max-w-full max-h-[68vh] block object-contain"
+                  className="max-w-full max-h-[42vh] lg:max-h-[68vh] block object-contain"
                   alt="Resize target"
                 />
+                {resizeOriginalDimensions && (
+                  <div className="absolute bottom-3 left-3 z-10 bg-slate-950/80 backdrop-blur-md text-xs font-mono px-2.5 py-1 rounded-md border border-white/10 text-indigo-300 shadow-lg select-none">
+                    Original: {resizeOriginalDimensions.width} x {resizeOriginalDimensions.height} px
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Right: Controls Area */}
-            <div className="w-[340px] border-l border-slate-800 p-8 flex flex-col gap-8 bg-slate-900/50 min-h-0">
+            <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-slate-800 p-5 lg:p-6 flex flex-col gap-4 bg-slate-900/50 min-h-0 overflow-y-auto custom-scrollbar">
               <div>
                 <h3 className="text-xl font-bold mb-2">{t.resize.title}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">{t.resize.note}</p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4 space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t.resize.resolution}</div>
-                <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-200">
-                  <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1">
-                    {resizeOriginalDimensions ? `${resizeOriginalDimensions.width} × ${resizeOriginalDimensions.height}` : '...'}
-                  </span>
-                  <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-indigo-300">
-                    {resizeOriginalDimensions ? getAspectRatio(resizeOriginalDimensions.width, resizeOriginalDimensions.height) : '...'}
-                  </span>
-                </div>
               </div>
 
               {/* Resolution Selection */}
@@ -586,14 +582,14 @@ const App: React.FC = () => {
               </div>
 
               {/* GPU Recommendations Tip */}
-              <div className="mt-auto p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 min-h-0">
-                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">{t.resize.recommendTitle}</div>
-                <p className="text-[11px] leading-relaxed text-amber-100/80 font-mono">
+              <div className="p-2 rounded-lg bg-slate-900/50 border border-slate-800/60">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{t.resize.recommendTitle}</div>
+                <p className="text-[11px] leading-relaxed text-slate-500 font-mono">
                   {t.resize.recommend}
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3">
+              <div className="mt-auto flex flex-col gap-3">
                 <button 
                   onClick={handleApplyResize}
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
@@ -657,7 +653,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
         
         {/* PANEL 1: Dataset Browser */}
         <aside className={`relative transition-[width] duration-200 ease-out bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 min-h-0 ${isLibraryCollapsed ? 'w-0 overflow-hidden border-r-0' : 'w-full lg:w-[220px] max-h-44 lg:max-h-none border-b lg:border-b-0'}`}>
@@ -753,7 +749,18 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex-1 min-h-0 bg-slate-950 rounded-xl border border-slate-800 p-4 pt-7 relative group flex flex-col overflow-hidden">
-                  <div className="absolute top-2 left-3 text-[9px] font-bold text-slate-600 uppercase tracking-widest">{t.outputHeader}</div>
+                  <div className="absolute top-2 inset-x-3 flex items-center justify-between gap-3">
+                    <div className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{t.outputHeader}</div>
+                    <button
+                      onClick={() => setIsOutputModalOpen(true)}
+                      disabled={!currentImage}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Open full output review"
+                      aria-label="Open full output review"
+                    >
+                      <IconExpand />
+                    </button>
+                  </div>
                   <div className="text-xs font-mono leading-relaxed text-indigo-300/90 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-8 whitespace-pre-wrap break-all">
                     {captionText || <span className="text-slate-700 italic">{t.placeholder}</span>}
                   </div>
@@ -810,6 +817,39 @@ const App: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Output Review Modal */}
+      {isOutputModalOpen && (
+        <div className="fixed inset-0 z-[210] bg-slate-950/80 backdrop-blur flex items-center justify-center p-4 sm:p-6">
+          <div className="w-[min(90vw,1100px)] h-[80vh] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-slate-800 bg-slate-900/90">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">{t.outputHeader}</h3>
+                <p className="text-[11px] text-slate-500 font-mono">{currentImage?.file.name || ''}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyOutput}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition"
+                >
+                  <IconCopy /> Copy
+                </button>
+                <button
+                  onClick={() => setIsOutputModalOpen(false)}
+                  className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <textarea
+              readOnly
+              value={captionText}
+              className="flex-1 min-h-0 w-full resize-none bg-slate-950 p-5 sm:p-6 text-sm font-mono leading-relaxed text-indigo-200/95 outline-none custom-scrollbar whitespace-pre-wrap"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Ephemeral Status Messages */}
       {status && (
