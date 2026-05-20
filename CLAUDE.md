@@ -43,6 +43,11 @@ App.tsx (主组件, ~670行)
 └── 功能层: 导入、自动标注、裁剪、导出
 ```
 
+当前布局补充：
+- 根容器在小屏下允许 `overflow-y-auto`，桌面 `lg` 维持单屏工作台。
+- `Final Formatted Output` 提供全屏审阅弹窗和复制操作。
+- `Resize` 弹窗在预览图角落展示原始分辨率 Badge，并保留 GPU 推荐提示与动作按钮。
+
 ### 核心服务
 - `services/geminiService.ts` - Gemini Vision API 封装，返回结构化 TagData
 - `utils/fileUtils.ts` - Base64 转换、文件下载工具
@@ -61,8 +66,10 @@ character, style, clothing, expression, action, position, background, lighting, 
 2. **AI 自动标注** - Gemini Vision 生成 Danbooru 风格标签
 3. **字段冻结** - 跨图片锁定特定标签值
 4. **图片裁剪** - Canvas 实现的宽高比裁剪
-5. **批量导出** - 单文件 .txt 或 ZIP 打包
-6. **国际化** - 中英双语 (浏览器自动检测)
+5. **批量导出** - 单文件 `.txt` 或 ZIP 打包
+6. **最终输出审阅** - 全屏弹窗复制/关闭
+7. **Resize 辅助** - 原图尺寸 Badge 与紧凑推荐信息
+8. **国际化** - 中英双语 (浏览器自动检测)
 
 ## 开发注意事项 / Development Notes
 
