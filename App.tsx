@@ -31,6 +31,16 @@ const IconQuestion = () => (
 const IconResize = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-7 7m7-7L5 5" /></svg>
 );
+const IconChevronLeft = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+  </svg>
+);
+const IconChevronRight = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
 const IconSettings = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 );
@@ -50,6 +60,7 @@ const App: React.FC = () => {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
 
   const [memoizeConfig, setMemoizeConfig] = useState<boolean>(() => {
     const saved = localStorage.getItem('lora_tagger_memoize');
@@ -589,21 +600,29 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-h-0">
         
         {/* PANEL 1: Dataset Browser */}
-        <aside className="w-[220px] bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-          <div className="p-3 border-b border-slate-800 bg-slate-900/30 flex justify-between items-center">
+        <aside className={`relative transition-[width] duration-200 ease-out bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 ${isLibraryCollapsed ? 'w-0 overflow-hidden border-r-0' : 'w-full lg:w-[220px] max-h-44 lg:max-h-none border-b lg:border-b-0'}`}>
+          <div className="p-3 border-b border-slate-800 bg-slate-900/30 flex justify-between items-center gap-2">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t.library} ({images.length})</span>
+            <button
+              onClick={() => setIsLibraryCollapsed(true)}
+              className="hidden lg:inline-flex items-center justify-center w-7 h-7 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition"
+              title="Collapse library"
+              aria-label="Collapse library"
+            >
+              <IconChevronLeft />
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+          <div className="flex-1 min-h-0 overflow-x-auto lg:overflow-x-hidden lg:overflow-y-auto p-3 flex gap-3 lg:block lg:space-y-3 custom-scrollbar">
             {images.map((img, idx) => {
               const isTagged = img.isAutoTagged || img.isEdited;
               return (
                 <button 
                   key={img.id} 
                   onClick={() => setCurrentIndex(idx)}
-                  className={`relative w-full group transition-all duration-200 ${idx === currentIndex ? 'scale-[1.02]' : 'opacity-60 hover:opacity-100'}`}
+                  className={`relative w-24 lg:w-full shrink-0 group transition-all duration-200 ${idx === currentIndex ? 'scale-[1.02]' : 'opacity-60 hover:opacity-100'}`}
                 >
                   <div className={`aspect-square rounded-xl overflow-hidden border-2 transition-all shadow-xl ${
                     idx === currentIndex ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-800'
@@ -625,10 +644,10 @@ const App: React.FC = () => {
         </aside>
 
         {/* PANEL 2: Main Stage */}
-        <section className="flex-1 flex flex-col min-w-0 bg-slate-950">
+        <section className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
           {currentImage ? (
             <>
-              <div className="flex-1 relative flex items-center justify-center p-8 bg-grid-slate-800/[0.05]">
+              <div className="flex-1 min-h-[300px] relative flex items-center justify-center p-4 sm:p-8 bg-grid-slate-800/[0.05]">
                 <div className="relative max-w-full max-h-full rounded-2xl shadow-2xl overflow-hidden border border-slate-800 group">
                   <img src={currentImage.previewUrl} className="max-w-full max-h-[65vh] object-contain block" alt="Current" />
                   <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-center gap-4">
@@ -642,9 +661,20 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="h-56 bg-slate-900 border-t border-slate-800 p-6 flex flex-col gap-4 shrink-0 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+              {isLibraryCollapsed && (
+                <button
+                  onClick={() => setIsLibraryCollapsed(false)}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-20 inline-flex items-center justify-center w-9 h-14 rounded-r-xl border border-l-0 border-slate-700 bg-slate-900 text-slate-300 shadow-lg shadow-black/30 hover:bg-slate-800 hover:text-white transition"
+                  title="Expand library"
+                  aria-label="Expand library"
+                >
+                  <IconChevronRight />
+                </button>
+              )}
+
+              <div className="min-h-56 lg:h-56 bg-slate-900 border-t border-slate-800 p-4 sm:p-6 flex flex-col gap-4 shrink-0 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-4">
                     <button onClick={handleAutoTag} disabled={isAutoTagging} className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-500/20">
                       {isAutoTagging ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconRobot />}
                       {t.generate}
@@ -665,9 +695,9 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-4 relative group">
+                <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-4 pt-7 relative group flex flex-col">
                   <div className="absolute top-2 left-3 text-[9px] font-bold text-slate-600 uppercase tracking-widest">{t.outputHeader}</div>
-                  <div className="mt-4 text-xs font-mono leading-relaxed text-indigo-300/90 break-all h-full overflow-y-auto custom-scrollbar pr-4">
+                  <div className="text-xs font-mono leading-relaxed text-indigo-300/90 break-all flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-4">
                     {captionText || <span className="text-slate-700 italic">{t.placeholder}</span>}
                   </div>
                 </div>
@@ -684,7 +714,7 @@ const App: React.FC = () => {
         </section>
 
         {/* PANEL 3: Property Panel */}
-        <aside className="w-[380px] bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
+        <aside className="w-full lg:w-[380px] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col shrink-0">
           <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-2">
             <span className="text-sm font-bold text-indigo-400">🏷️</span>
             <span className="text-sm font-bold uppercase tracking-wider">{t.editorHeader}</span>
