@@ -21,6 +21,8 @@ export interface TaggedImage {
   tags: TagData;
   isAutoTagged: boolean;
   isEdited: boolean;
+  isResized: boolean;
+  resizeBadge: string | null;
 }
 
 export type TagField = keyof TagData;

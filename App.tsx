@@ -61,6 +61,7 @@ type ResizeResult =
       skipped: true;
       width: number;
       height: number;
+      badge: string | null;
     }
   | {
       skipped: false;
@@ -68,6 +69,7 @@ type ResizeResult =
       height: number;
       targetWidth: number;
       targetHeight: number;
+      badge: string;
       image: TaggedImage;
     };
 
@@ -314,7 +316,9 @@ const App: React.FC = () => {
         previewUrl: URL.createObjectURL(file),
         tags: initialTags,
         isAutoTagged: false,
-        isEdited: false
+        isEdited: false,
+        isResized: false,
+        resizeBadge: null
       };
     });
 
@@ -356,7 +360,7 @@ const App: React.FC = () => {
     const longestSide = Math.max(width, height);
 
     if (longestSide <= maxSide) {
-      return { skipped: true, width, height };
+      return { skipped: true, width, height, badge: null };
     }
 
     const scale = maxSide / longestSide;
@@ -368,6 +372,7 @@ const App: React.FC = () => {
       height,
       targetWidth,
       targetHeight,
+      badge: `${maxSide}px`,
       image: loadedImage
     };
   };
@@ -385,7 +390,8 @@ const App: React.FC = () => {
         ...img,
         file: nextFile,
         previewUrl: nextUrl,
-        isEdited: true
+        isResized: true,
+        resizeBadge: `${resizeMaxSide}px`
       };
     });
 
@@ -1071,6 +1077,7 @@ const App: React.FC = () => {
           <div className="flex-1 min-h-0 overflow-x-auto lg:overflow-x-hidden lg:overflow-y-auto p-3 flex gap-3 lg:block lg:space-y-3 custom-scrollbar">
             {images.map((img, idx) => {
               const isTagged = img.isAutoTagged || img.isEdited;
+              const isResized = img.isResized;
               const batchStatus = batchTagging.statuses[img.id];
               const isBatchCurrent = batchTagging.isRunning && batchTagging.currentId === img.id;
               const isBatchRemoveLocked = isBatchCurrent;
@@ -1088,6 +1095,11 @@ const App: React.FC = () => {
                   {isTagged && (
                     <div className="absolute top-1 left-1 bg-emerald-600 text-[8px] px-1.5 py-0.5 rounded font-bold shadow-md uppercase">
                       {t.tagged}
+                    </div>
+                  )}
+                  {!isTagged && isResized && img.resizeBadge && (
+                    <div className="absolute top-1 left-1 bg-indigo-600/90 text-white text-[8px] px-1.5 py-0.5 rounded font-bold shadow-md uppercase border border-indigo-400/50">
+                      {img.resizeBadge}
                     </div>
                   )}
                   {batchStatus && !isTagged && (
