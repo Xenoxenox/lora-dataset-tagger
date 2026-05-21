@@ -14,9 +14,6 @@ const IconRobot = () => (
 const IconSave = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
 );
-const IconZip = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-);
 const IconLock = ({ locked }: { locked: boolean }) => (
   <svg className={`w-3.5 h-3.5 ${locked ? 'text-amber-400' : 'text-slate-500'}`} fill={locked ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -55,7 +52,24 @@ const IconCopy = () => (
   </svg>
 );
 
+type OperationScope = 'batch' | 'single';
+type BatchActionType = 'tagging' | 'resizing';
 type BatchImageStatus = 'queued' | 'running' | 'success' | 'failed' | 'skipped' | 'removed';
+
+type ResizeResult =
+  | {
+      skipped: true;
+      width: number;
+      height: number;
+    }
+  | {
+      skipped: false;
+      width: number;
+      height: number;
+      targetWidth: number;
+      targetHeight: number;
+      image: TaggedImage;
+    };
 
 type BatchTaggingState = {
   isRunning: boolean;
@@ -81,6 +95,13 @@ const INITIAL_BATCH_STATE: BatchTaggingState = {
   statuses: {}
 };
 
+const loadImageElement = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error('Image failed to load'));
+  img.src = src;
+});
+
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>(() => {
     const userLang = navigator.language.toLowerCase();
@@ -90,9 +111,15 @@ const App: React.FC = () => {
 
   const [images, setImages] = useState<TaggedImage[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [operationScope, setOperationScope] = useState<OperationScope>(() => {
+    const saved = localStorage.getItem('lora_tagger_operation_scope');
+    return saved === 'single' ? 'single' : 'batch';
+  });
   const [isAutoTagging, setIsAutoTagging] = useState(false);
   const [autoTaggingId, setAutoTaggingId] = useState<string | null>(null);
   const [batchTagging, setBatchTagging] = useState<BatchTaggingState>(INITIAL_BATCH_STATE);
+  const [activeBatchType, setActiveBatchType] = useState<BatchActionType | null>(null);
+  const [lastBatchType, setLastBatchType] = useState<BatchActionType>('tagging');
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -133,48 +160,106 @@ const App: React.FC = () => {
   const isCurrentBatchTagging = batchTagging.isRunning && !!currentImage && batchTagging.currentId === currentImage.id;
   const isCurrentTaggingLocked = isCurrentSingleAutoTagging || isCurrentBatchTagging;
   const batchProgressPercent = batchTagging.total > 0 ? (batchTagging.completed / batchTagging.total) * 100 : 0;
-  const batchEligibleCount = useMemo(
-    () => images.filter(img => !img.isAutoTagged && !img.isEdited).length,
-    [images]
-  );
   const batchText = lang === 'zh'
     ? {
-        start: '批量 AI 打标',
-        running: '批量处理中',
-        cancel: '取消队列',
-        canceling: '取消中',
-        noEligible: '没有符合条件的未打标图片',
-        startStatus: (count: number) => `批量 AI 打标开始，共 ${count} 张`,
-        cancelStatus: '已请求取消，当前图片完成后停止',
-        complete: (success: number, failed: number, skipped: number) => `批量完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
-        stopped: (success: number, failed: number, skipped: number) => `批量已停止：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
-        progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `AI ${completed}/${total} · 成功 ${success} 失败 ${failed} 跳过 ${skipped}`,
-        queued: '队列',
-        processing: 'AI中',
-        failed: '失败',
-        skipped: '跳过'
+        scope: {
+          batch: '批量操作',
+          single: '单图操作'
+        },
+        actions: {
+          ai: 'AI打标',
+          resize: '像素调整',
+          export: '导出.txt'
+        },
+        tagging: {
+          start: '批量 AI 打标',
+          running: '批量处理中',
+          cancel: '取消队列',
+          canceling: '取消中',
+          noEligible: '没有符合条件的未打标图片',
+          startStatus: (count: number) => `批量 AI 打标开始，共 ${count} 张`,
+          cancelStatus: '已请求取消，当前图片完成后停止',
+          complete: (success: number, failed: number, skipped: number) => `批量完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
+          stopped: (success: number, failed: number, skipped: number) => `批量已停止：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
+          progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `AI ${completed}/${total} · 成功 ${success} 失败 ${failed} 跳过 ${skipped}`,
+          queued: '队列',
+          processing: 'AI中',
+          success: '成功',
+          failed: '失败',
+          skipped: '跳过'
+        },
+        resizing: {
+          start: '批量像素调整',
+          running: '批量处理中',
+          cancel: '取消队列',
+          canceling: '取消中',
+          noEligible: '没有可调整的图片',
+          startStatus: (count: number) => `批量像素调整开始，共 ${count} 张`,
+          cancelStatus: '已请求取消，当前图片完成后停止',
+          complete: (success: number, failed: number, skipped: number) => `批量完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
+          stopped: (success: number, failed: number, skipped: number) => `批量已停止：成功 ${success}，失败 ${failed}，跳过 ${skipped}`,
+          progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `Resize ${completed}/${total} · 成功 ${success} 失败 ${failed} 跳过 ${skipped}`,
+          queued: '队列',
+          processing: '调整中',
+          success: '成功',
+          failed: '失败',
+          skipped: '跳过'
+        }
       }
     : {
-        start: 'BATCH AI TAG',
-        running: 'BATCH RUNNING',
-        cancel: 'CANCEL QUEUE',
-        canceling: 'CANCELING',
-        noEligible: 'No untagged images to process',
-        startStatus: (count: number) => `Batch AI tagging started for ${count} images`,
-        cancelStatus: 'Cancel requested; stopping after the current image',
-        complete: (success: number, failed: number, skipped: number) => `Batch complete: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
-        stopped: (success: number, failed: number, skipped: number) => `Batch stopped: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
-        progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `AI ${completed}/${total} · ok ${success} fail ${failed} skip ${skipped}`,
-        queued: 'Queued',
-        processing: 'AI',
-        failed: 'Fail',
-        skipped: 'Skip'
+        scope: {
+          batch: 'Batch Mode',
+          single: 'Single Mode'
+        },
+        actions: {
+          ai: 'AI TAG',
+          resize: 'PIXEL ADJUST',
+          export: 'EXPORT .TXT'
+        },
+        tagging: {
+          start: 'BATCH AI TAG',
+          running: 'BATCH RUNNING',
+          cancel: 'CANCEL QUEUE',
+          canceling: 'CANCELING',
+          noEligible: 'No untagged images to process',
+          startStatus: (count: number) => `Batch AI tagging started for ${count} images`,
+          cancelStatus: 'Cancel requested; stopping after the current image',
+          complete: (success: number, failed: number, skipped: number) => `Batch complete: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
+          stopped: (success: number, failed: number, skipped: number) => `Batch stopped: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
+          progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `AI ${completed}/${total} · ok ${success} fail ${failed} skip ${skipped}`,
+          queued: 'Queued',
+          processing: 'AI',
+          success: 'Done',
+          failed: 'Fail',
+          skipped: 'Skip'
+        },
+        resizing: {
+          start: 'BATCH RESIZE',
+          running: 'BATCH RUNNING',
+          cancel: 'CANCEL QUEUE',
+          canceling: 'CANCELING',
+          noEligible: 'No images to resize',
+          startStatus: (count: number) => `Batch resize started for ${count} images`,
+          cancelStatus: 'Cancel requested; stopping after the current image',
+          complete: (success: number, failed: number, skipped: number) => `Batch complete: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
+          stopped: (success: number, failed: number, skipped: number) => `Batch stopped: ${success} succeeded, ${failed} failed, ${skipped} skipped`,
+          progress: (completed: number, total: number, success: number, failed: number, skipped: number) => `Resize ${completed}/${total} · ok ${success} fail ${failed} skip ${skipped}`,
+          queued: 'Queued',
+          processing: 'Resize',
+          success: 'Done',
+          failed: 'Fail',
+          skipped: 'Skip'
+        }
       };
-
+  const batchUi = batchText[activeBatchType ?? lastBatchType];
   useEffect(() => {
     const hasSeenTutorial = localStorage.getItem('lora_tagger_tutorial_seen');
     if (!hasSeenTutorial) setShowTutorial(true);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('lora_tagger_operation_scope', operationScope);
+  }, [operationScope]);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -264,6 +349,52 @@ const App: React.FC = () => {
     return autoTagImage(base64, image.file.type);
   };
 
+  const getResizedImage = async (image: TaggedImage, maxSide: number): Promise<ResizeResult> => {
+    const loadedImage = await loadImageElement(image.previewUrl);
+    const width = loadedImage.naturalWidth;
+    const height = loadedImage.naturalHeight;
+    const longestSide = Math.max(width, height);
+
+    if (longestSide <= maxSide) {
+      return { skipped: true, width, height };
+    }
+
+    const scale = maxSide / longestSide;
+    const targetWidth = Math.round(width * scale);
+    const targetHeight = Math.round(height * scale);
+    return {
+      skipped: false,
+      width,
+      height,
+      targetWidth,
+      targetHeight,
+      image: loadedImage
+    };
+  };
+
+  const replaceImageFileById = (id: string, nextFile: File, nextUrl: string) => {
+    const target = imagesRef.current.find(img => img.id === id);
+    if (!target) {
+      URL.revokeObjectURL(nextUrl);
+      return false;
+    }
+
+    const nextImages = imagesRef.current.map(img => {
+      if (img.id !== id) return img;
+      return {
+        ...img,
+        file: nextFile,
+        previewUrl: nextUrl,
+        isEdited: true
+      };
+    });
+
+    URL.revokeObjectURL(target.previewUrl);
+    imagesRef.current = nextImages;
+    setImages(nextImages);
+    return true;
+  };
+
   const mergeAiTagsById = (id: string, aiTags: TagData) => {
     let didMerge = false;
     setImages(prev => prev.map(img => {
@@ -314,36 +445,42 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleBatchAutoTag = async () => {
+  const runBatchQueue = async (
+    type: BatchActionType,
+    queue: string[],
+    processor: (image: TaggedImage) => Promise<'success' | 'failed' | 'skipped'>,
+    startMessage: (count: number) => string,
+    completeMessage: (success: number, failed: number, skipped: number) => string,
+    stoppedMessage: (success: number, failed: number, skipped: number) => string,
+    noEligibleMessage: string,
+    queuedLabel: BatchImageStatus = 'queued'
+  ) => {
     if (batchTagging.isRunning) {
       batchCancelRequestedRef.current = true;
       setBatchTagging(prev => ({ ...prev, cancelRequested: true }));
-      setStatus({ message: batchText.cancelStatus, type: 'info' });
+      setStatus({ message: batchUi.cancelStatus, type: 'info' });
       return;
     }
     if (isAutoTagging) return;
-
-    const queue = images
-      .filter(img => !img.isAutoTagged && !img.isEdited)
-      .map(img => img.id);
-
     if (queue.length === 0) {
-      setStatus({ message: batchText.noEligible, type: 'info' });
+      setStatus({ message: noEligibleMessage, type: 'info' });
       return;
     }
 
     batchCancelRequestedRef.current = false;
     const initialStatuses = queue.reduce<Record<string, BatchImageStatus>>((acc, id) => {
-      acc[id] = 'queued';
+      acc[id] = queuedLabel;
       return acc;
     }, {});
+    setActiveBatchType(type);
+    setLastBatchType(type);
     setBatchTagging({
       ...INITIAL_BATCH_STATE,
       isRunning: true,
       total: queue.length,
       statuses: initialStatuses
     });
-    setStatus({ message: batchText.startStatus(queue.length), type: 'info' });
+    setStatus({ message: startMessage(queue.length), type: 'info' });
 
     const counts = { completed: 0, success: 0, failed: 0, skipped: 0 };
 
@@ -358,13 +495,6 @@ const App: React.FC = () => {
         continue;
       }
 
-      if (imageBeforeRequest.isAutoTagged || imageBeforeRequest.isEdited) {
-        counts.completed += 1;
-        counts.skipped += 1;
-        updateBatchProgress(id, 'skipped', counts, null);
-        continue;
-      }
-
       setBatchTagging(prev => ({
         ...prev,
         currentId: id,
@@ -372,34 +502,40 @@ const App: React.FC = () => {
       }));
 
       try {
-        const aiTags = await requestAiTags(imageBeforeRequest);
+        const result = await processor(imageBeforeRequest);
         const imageAfterRequest = imagesRef.current.find(img => img.id === id);
 
         counts.completed += 1;
         if (!imageAfterRequest) {
           counts.skipped += 1;
-          updateBatchProgress(id, 'removed', counts);
+          updateBatchProgress(id, 'removed', counts, null);
           continue;
         }
 
-        if (imageAfterRequest.isAutoTagged || imageAfterRequest.isEdited) {
+        if (result === 'skipped') {
           counts.skipped += 1;
-          updateBatchProgress(id, 'skipped', counts);
+          updateBatchProgress(id, 'skipped', counts, null);
           continue;
         }
 
-        mergeAiTagsById(id, aiTags);
+        if (result === 'failed') {
+          counts.failed += 1;
+          updateBatchProgress(id, 'failed', counts, null);
+          continue;
+        }
+
         counts.success += 1;
-        updateBatchProgress(id, 'success', counts);
+        updateBatchProgress(id, 'success', counts, null);
       } catch (e) {
         counts.completed += 1;
         counts.failed += 1;
-        updateBatchProgress(id, 'failed', counts);
+        updateBatchProgress(id, 'failed', counts, null);
       }
     }
 
     const wasCancelled = batchCancelRequestedRef.current;
     batchCancelRequestedRef.current = false;
+    setActiveBatchType(null);
     setBatchTagging(prev => ({
       ...prev,
       isRunning: false,
@@ -412,63 +548,115 @@ const App: React.FC = () => {
     }));
     setStatus({
       message: wasCancelled
-        ? batchText.stopped(counts.success, counts.failed, counts.skipped)
-        : batchText.complete(counts.success, counts.failed, counts.skipped),
+        ? stoppedMessage(counts.success, counts.failed, counts.skipped)
+        : completeMessage(counts.success, counts.failed, counts.skipped),
       type: counts.failed > 0 ? 'error' : 'success'
     });
   };
 
+  const handleBatchAutoTag = async () => {
+    if (batchTagging.isRunning) {
+      batchCancelRequestedRef.current = true;
+      setBatchTagging(prev => ({ ...prev, cancelRequested: true }));
+      setStatus({ message: batchUi.cancelStatus, type: 'info' });
+      return;
+    }
+    if (isAutoTagging) return;
+    if (operationScope === 'single') {
+      await handleAutoTag();
+      return;
+    }
+    const queue = imagesRef.current
+      .filter(img => !img.isAutoTagged && !img.isEdited)
+      .map(img => img.id);
+    await runBatchQueue(
+      'tagging',
+      queue,
+      async (image) => {
+        const aiTags = await requestAiTags(image);
+        const imageStillPresent = imagesRef.current.find(img => img.id === image.id);
+        if (!imageStillPresent || imageStillPresent.isAutoTagged || imageStillPresent.isEdited) {
+          return 'skipped';
+        }
+        mergeAiTagsById(image.id, aiTags);
+        return 'success';
+      },
+      batchText.tagging.startStatus,
+      batchText.tagging.complete,
+      batchText.tagging.stopped,
+      batchText.tagging.noEligible
+    );
+  };
+
   const handleApplyResize = async () => {
     if (!currentImage) return;
+    if (batchTagging.isRunning) {
+      batchCancelRequestedRef.current = true;
+      setBatchTagging(prev => ({ ...prev, cancelRequested: true }));
+      setStatus({ message: batchUi.cancelStatus, type: 'info' });
+      return;
+    }
+    const targetImage = currentImage;
+
+    if (operationScope === 'batch') {
+      setShowResizeDialog(false);
+      await runBatchQueue(
+        'resizing',
+        imagesRef.current.map(img => img.id),
+        async (image) => {
+          const resizeResult = await getResizedImage(image, resizeMaxSide);
+          if (resizeResult.skipped) return 'skipped';
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return 'failed';
+
+          canvas.width = resizeResult.targetWidth;
+          canvas.height = resizeResult.targetHeight;
+          ctx.drawImage(resizeResult.image, 0, 0, resizeResult.targetWidth, resizeResult.targetHeight);
+
+          const mimeType = image.file.type || 'image/jpeg';
+          const blob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, mimeType, 0.95);
+          });
+          if (!blob) return 'failed';
+
+          const newFile = new File([blob], image.file.name, { type: mimeType });
+          const newUrl = URL.createObjectURL(newFile);
+          return replaceImageFileById(image.id, newFile, newUrl) ? 'success' : 'skipped';
+        },
+        batchText.resizing.startStatus,
+        batchText.resizing.complete,
+        batchText.resizing.stopped,
+        batchText.resizing.noEligible
+      );
+      return;
+    }
 
     try {
-      const img = new Image();
-      img.src = currentImage.previewUrl;
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('Image failed to load'));
-      });
-
-      const { naturalWidth: width, naturalHeight: height } = img;
-      const longestSide = Math.max(width, height);
-
-      // NewbieLoraTrainer buckets by aspect ratio, so this tool only downsizes oversized images.
-      if (longestSide <= resizeMaxSide) {
+      const resizeResult = await getResizedImage(targetImage, resizeMaxSide);
+      if (resizeResult.skipped) {
         setShowResizeDialog(false);
-        setStatus({ message: t.resize.skipped(width, height), type: 'info' });
+        setStatus({ message: t.resize.skipped(resizeResult.width, resizeResult.height), type: 'info' });
         return;
       }
 
-      const scale = resizeMaxSide / longestSide;
-      const targetWidth = Math.round(width * scale);
-      const targetHeight = Math.round(height * scale);
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      canvas.width = resizeResult.targetWidth;
+      canvas.height = resizeResult.targetHeight;
+      ctx.drawImage(resizeResult.image, 0, 0, resizeResult.targetWidth, resizeResult.targetHeight);
 
-      const mimeType = currentImage.file.type || 'image/jpeg';
+      const mimeType = targetImage.file.type || 'image/jpeg';
       canvas.toBlob((blob) => {
         if (!blob) return;
-        const newFile = new File([blob], currentImage.file.name, { type: mimeType });
+        const newFile = new File([blob], targetImage.file.name, { type: mimeType });
         const newUrl = URL.createObjectURL(newFile);
-
-        setImages(prev => {
-          const updated = [...prev];
-          URL.revokeObjectURL(updated[currentIndex].previewUrl);
-          updated[currentIndex] = {
-            ...updated[currentIndex],
-            file: newFile,
-            previewUrl: newUrl,
-            isEdited: true
-          };
-          return updated;
-        });
+        replaceImageFileById(targetImage.id, newFile, newUrl);
         setShowResizeDialog(false);
-        setStatus({ message: t.resize.success(targetWidth, targetHeight), type: 'success' });
+        setStatus({ message: t.resize.success(resizeResult.targetWidth, resizeResult.targetHeight), type: 'success' });
       }, mimeType, 0.95);
     } catch (e) {
       setStatus({ message: t.resize.failed, type: 'error' });
@@ -911,14 +1099,16 @@ const App: React.FC = () => {
                           : batchStatus === 'queued'
                             ? 'bg-slate-950/80 text-slate-300 border-slate-700'
                             : 'bg-amber-600/90 text-white border-amber-400/50'
-                    }`}>
+                      }`}>
                       {batchStatus === 'running'
-                        ? batchText.processing
+                        ? batchUi.processing
                         : batchStatus === 'failed'
-                          ? batchText.failed
+                          ? batchUi.failed
                           : batchStatus === 'queued'
-                            ? batchText.queued
-                            : batchText.skipped}
+                            ? batchUi.queued
+                            : batchStatus === 'success'
+                              ? batchUi.success
+                              : batchUi.skipped}
                     </div>
                   )}
                   {isBatchCurrent && (
@@ -973,38 +1163,78 @@ const App: React.FC = () => {
                     />
                   </div>
                 )}
-                <div className="flex items-center justify-between gap-3 min-w-0">
-                  <div className="flex flex-1 min-w-0 items-center gap-3 overflow-x-auto custom-scrollbar pb-1">
-                    <button onClick={handleAutoTag} disabled={isAutoTagging || batchTagging.isRunning} className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-500/20">
-                      {isCurrentSingleAutoTagging ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconRobot />}
-                      {t.generate}
-                    </button>
-                    <button onClick={handleBatchAutoTag} disabled={!batchTagging.isRunning && (isAutoTagging || batchEligibleCount === 0)} className={`shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 border rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 shadow-lg ${
-                      batchTagging.isRunning
-                        ? 'bg-red-600 hover:bg-red-500 border-red-500/30 shadow-red-500/10'
-                        : 'bg-indigo-950 hover:bg-indigo-900 border-indigo-600/30 shadow-indigo-500/10 text-indigo-100'
-                    }`}>
-                      {batchTagging.isRunning && !batchTagging.cancelRequested ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconRobot />}
-                      {batchTagging.isRunning
-                        ? batchTagging.cancelRequested ? batchText.canceling : batchText.cancel
-                        : batchText.start}
-                    </button>
-                    <button onClick={() => setShowResizeDialog(true)} disabled={isCurrentTaggingLocked} className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50">
-                      <IconResize /> {t.resize.button}
-                    </button>
-                    <button onClick={saveTags} className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95">
-                      <IconSave /> {t.export}
-                    </button>
-                    <button onClick={handleExportAll} disabled={isExporting} className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/20 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-emerald-500/10">
-                      {isExporting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconZip />}
-                      {t.exportAll}
-                    </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 min-w-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+                      <button
+                        onClick={() => setOperationScope('batch')}
+                        disabled={batchTagging.isRunning}
+                        className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition ${
+                          operationScope === 'batch' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {batchText.scope.batch}
+                      </button>
+                      <button
+                        onClick={() => setOperationScope('single')}
+                        disabled={batchTagging.isRunning}
+                        className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition ${
+                          operationScope === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {batchText.scope.single}
+                      </button>
+                    </div>
                   </div>
                   <div className="shrink-0 text-[11px] font-mono text-slate-500 uppercase text-right">
                     {batchTagging.isRunning || batchTagging.total > 0
-                      ? batchText.progress(batchTagging.completed, batchTagging.total, batchTagging.success, batchTagging.failed, batchTagging.skipped)
+                      ? `${batchUi.progress(batchTagging.completed, batchTagging.total, batchTagging.success, batchTagging.failed, batchTagging.skipped)}`
                       : `${t.step} ${currentIndex + 1} / ${images.length}`}
                   </div>
+                </div>
+                <div className="flex items-center gap-2 min-w-0 overflow-x-auto custom-scrollbar pb-1">
+                  <button
+                    onClick={operationScope === 'single' ? handleAutoTag : handleBatchAutoTag}
+                    disabled={!currentImage || isAutoTagging || (batchTagging.isRunning && activeBatchType !== 'tagging')}
+                    className={`shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 shadow-lg ${
+                      batchTagging.isRunning && activeBatchType === 'tagging'
+                        ? 'bg-red-600 hover:bg-red-500 border border-red-500/30 shadow-red-500/10'
+                        : 'bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 shadow-indigo-500/20'
+                    }`}
+                  >
+                    {batchTagging.isRunning && activeBatchType === 'tagging'
+                      ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      : isCurrentSingleAutoTagging
+                        ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        : <IconRobot />}
+                    {batchTagging.isRunning && activeBatchType === 'tagging'
+                      ? (batchTagging.cancelRequested ? batchUi.canceling : batchUi.cancel)
+                      : batchText.actions.ai}
+                  </button>
+                  <button
+                    onClick={batchTagging.isRunning && activeBatchType === 'resizing' ? handleApplyResize : () => setShowResizeDialog(true)}
+                    disabled={!currentImage || (isCurrentTaggingLocked && activeBatchType !== 'resizing') || (batchTagging.isRunning && activeBatchType !== 'resizing')}
+                    className={`shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 border rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50 ${
+                      batchTagging.isRunning && activeBatchType === 'resizing'
+                        ? 'bg-red-600 hover:bg-red-500 border-red-500/30 shadow-lg shadow-red-500/10'
+                        : 'bg-slate-800 hover:bg-slate-700 border-slate-700'
+                    }`}
+                  >
+                    {batchTagging.isRunning && activeBatchType === 'resizing'
+                      ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      : <IconResize />}
+                    {batchTagging.isRunning && activeBatchType === 'resizing'
+                      ? (batchTagging.cancelRequested ? batchUi.canceling : batchUi.cancel)
+                      : batchText.actions.resize}
+                  </button>
+                  <button
+                    onClick={operationScope === 'single' ? saveTags : handleExportAll}
+                    disabled={(!currentImage && operationScope === 'single') || isExporting || batchTagging.isRunning || (operationScope === 'single' && !captionText)}
+                    className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {isExporting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconSave />}
+                    {batchText.actions.export}
+                  </button>
                 </div>
 
                 <div className="flex-1 min-h-0 bg-slate-950 rounded-xl border border-slate-800 p-4 pt-7 relative group flex flex-col overflow-hidden">
