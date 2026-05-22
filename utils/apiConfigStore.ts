@@ -2,6 +2,7 @@ import { CustomAPIConfig } from '../types';
 
 const MEMOIZE_KEY = 'lora_tagger_memoize';
 const API_CONFIG_KEY = 'lora_tagger_api_config';
+const REVERSE_PROMPT_KEY = 'lora_tagger_reverse_prompt';
 
 export const DEFAULT_API_CONFIG: CustomAPIConfig = {
   enabled: false,
@@ -9,6 +10,15 @@ export const DEFAULT_API_CONFIG: CustomAPIConfig = {
   apiKey: '',
   model: ''
 };
+
+export const DEFAULT_REVERSE_PROMPT = `You are a high-precision image captioning expert for Stable Diffusion LoRA training.
+Analyze the image provided and extract descriptive tags.
+Rules:
+1. Use Danbooru-style tags (comma-separated short phrases).
+2. Focus on physical characteristics, style, clothing, and environment.
+3. Keep tags concise.
+4. Return the data in a clean JSON format matching the schema.
+5. If the image is anime-style, identify common tropes.`;
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
@@ -68,4 +78,17 @@ export const saveApiConfig = (config: CustomAPIConfig, memoize = true) => {
 
 export const clearApiConfig = () => {
   removeStorage(API_CONFIG_KEY);
+};
+
+export const loadReversePrompt = () => {
+  const saved = readStorage(REVERSE_PROMPT_KEY);
+  return saved === null ? DEFAULT_REVERSE_PROMPT : saved;
+};
+
+export const saveReversePrompt = (prompt: string) => {
+  writeStorage(REVERSE_PROMPT_KEY, prompt);
+};
+
+export const clearReversePrompt = () => {
+  removeStorage(REVERSE_PROMPT_KEY);
 };

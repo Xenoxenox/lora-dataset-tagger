@@ -1,18 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { TagData } from "../types";
+import { DEFAULT_REVERSE_PROMPT } from "../utils/apiConfigStore";
 
-// Keep the model response aligned to TagData so UI editing and .txt export stay deterministic.
-const TAGGING_SYSTEM_PROMPT = `You are a high-precision image captioning expert for Stable Diffusion LoRA training. 
-Analyze the image provided and extract descriptive tags. 
-Rules:
-1. Use Danbooru-style tags (comma-separated short phrases).
-2. Focus on physical characteristics, style, clothing, and environment.
-3. Keep tags concise.
-4. Return the data in a clean JSON format matching the schema.
-5. If the image is anime-style, identify common tropes.`;
-
-export async function autoTagImage(base64Data: string, mimeType: string): Promise<TagData> {
+export async function autoTagImage(base64Data: string, mimeType: string, reversePrompt = DEFAULT_REVERSE_PROMPT): Promise<TagData> {
   // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
@@ -32,7 +23,7 @@ export async function autoTagImage(base64Data: string, mimeType: string): Promis
       ],
     },
     config: {
-      systemInstruction: TAGGING_SYSTEM_PROMPT,
+      systemInstruction: reversePrompt,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,

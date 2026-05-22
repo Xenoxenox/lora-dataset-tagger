@@ -74,7 +74,8 @@ export const translations = {
       other: "Other"
     },
     settings: {
-      title: "API Settings",
+      title: "Settings",
+      apiSection: "API Settings",
       useCustom: "Use Custom API",
       baseUrl: "API Base URL",
       baseUrlPlaceholder: "https://api.openrouter.ai/v1",
@@ -89,7 +90,12 @@ export const translations = {
       testSuccess: "Connection test successful",
       testFailed: "Connection test failed",
       memoize: "Memorise for next time",
-      memoizeHint: "Auto-fill API config on next launch"
+      memoizeHint: "Auto-fill API config on next launch",
+      reversePromptSection: "Reverse Prompt Settings",
+      customReversePrompt: "Custom Reverse Prompt",
+      customReversePromptPlaceholder: "Describe how the AI should analyze images and return tag JSON.",
+      reversePromptHint: "Used by Gemini and custom OpenAI-compatible endpoints for AI caption generation.",
+      restoreDefault: "Restore Default"
     }
   },
   zh: {
@@ -164,7 +170,8 @@ export const translations = {
       other: "其他属性"
     },
     settings: {
-      title: "API 设置",
+      title: "设置",
+      apiSection: "API 设置",
       useCustom: "使用自定义 API",
       baseUrl: "API 地址",
       baseUrlPlaceholder: "https://api.openrouter.ai/v1",
@@ -179,7 +186,12 @@ export const translations = {
       testSuccess: "连接测试成功",
       testFailed: "连接测试失败",
       memoize: "下次自动记住",
-      memoizeHint: "启动时自动填充 API 配置"
+      memoizeHint: "启动时自动填充 API 配置",
+      reversePromptSection: "反推提示语设置",
+      customReversePrompt: "自定义反推提示语",
+      customReversePromptPlaceholder: "描述 AI 应如何分析图片并返回标签 JSON。",
+      reversePromptHint: "用于 Gemini 和自定义 OpenAI 兼容接口的 AI 自动打标。",
+      restoreDefault: "恢复默认"
     }
   }
 };

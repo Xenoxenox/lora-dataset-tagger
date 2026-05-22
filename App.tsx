@@ -4,7 +4,15 @@ import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig } from '.
 import { autoTagImage } from './services/geminiService';
 import { autoTagImageOpenAI } from './services/openaiCompatService';
 import { fileToBase64, downloadBlobFile, downloadTextFile } from './utils/fileUtils';
-import { loadApiConfig, loadMemoizeConfig, saveApiConfig, saveMemoizeConfig } from './utils/apiConfigStore';
+import {
+  DEFAULT_REVERSE_PROMPT,
+  loadApiConfig,
+  loadMemoizeConfig,
+  loadReversePrompt,
+  saveApiConfig,
+  saveMemoizeConfig,
+  saveReversePrompt
+} from './utils/apiConfigStore';
 import { translations, Language } from './i18n';
 import JSZip from 'jszip';
 
@@ -140,6 +148,10 @@ const App: React.FC = () => {
 
   const [apiConfig, setApiConfig] = useState<CustomAPIConfig>(() => {
     return loadApiConfig();
+  });
+
+  const [reversePrompt, setReversePrompt] = useState(() => {
+    return loadReversePrompt();
   });
   
   const [frozenFields, setFrozenFields] = useState<Record<TagField, boolean>>({
@@ -344,9 +356,9 @@ const App: React.FC = () => {
 
     // Custom endpoints must be OpenAI chat-completions compatible.
     if (apiConfig.enabled && apiConfig.baseUrl && apiConfig.apiKey && apiConfig.model) {
-      return autoTagImageOpenAI(base64, image.file.type, apiConfig);
+      return autoTagImageOpenAI(base64, image.file.type, apiConfig, reversePrompt);
     }
-    return autoTagImage(base64, image.file.type);
+    return autoTagImage(base64, image.file.type, reversePrompt);
   };
 
   const getResizedImage = async (image: TaggedImage, maxSide: number): Promise<ResizeResult> => {
@@ -804,8 +816,13 @@ const App: React.FC = () => {
   const handleSaveSettings = () => {
     saveMemoizeConfig(memoizeConfig);
     saveApiConfig(apiConfig, memoizeConfig);
+    saveReversePrompt(reversePrompt);
     setStatus({ message: t.settings.saved, type: 'success' });
     setShowSettings(false);
+  };
+
+  const handleResetReversePrompt = () => {
+    setReversePrompt(DEFAULT_REVERSE_PROMPT);
   };
 
   return (
@@ -845,7 +862,7 @@ const App: React.FC = () => {
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-3xl shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-8">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -854,84 +871,115 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-bold text-white tracking-tight">{t.settings.title}</h2>
               </div>
 
-              <div className="space-y-6">
-                {/* Enable Custom API Toggle */}
-                <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                  <label className="text-sm font-bold text-slate-200">{t.settings.useCustom}</label>
-                  <button
-                    onClick={() => setApiConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
-                    className={`relative w-14 h-7 rounded-full transition-all ${
-                      apiConfig.enabled ? 'bg-indigo-600' : 'bg-slate-700'
-                    }`}
-                  >
-                    <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-lg ${
-                      apiConfig.enabled ? 'left-8' : 'left-1'
-                    }`} />
-                  </button>
-                </div>
-
-                {/* API Configuration Fields */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
-                      {t.settings.baseUrl}
-                    </label>
-                    <input
-                      type="text"
-                      value={apiConfig.baseUrl}
-                      onChange={(e) => setApiConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
-                      placeholder={t.settings.baseUrlPlaceholder}
-                      disabled={!apiConfig.enabled}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    />
+              <div className="max-h-[calc(90vh-12rem)] overflow-y-auto pr-2 space-y-6">
+                <section className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">{t.settings.apiSection}</h3>
+                  {/* Enable Custom API Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <label className="text-sm font-bold text-slate-200">{t.settings.useCustom}</label>
+                    <button
+                      type="button"
+                      onClick={() => setApiConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
+                      className={`relative w-14 h-7 rounded-full transition-all ${
+                        apiConfig.enabled ? 'bg-indigo-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-lg ${
+                        apiConfig.enabled ? 'left-8' : 'left-1'
+                      }`} />
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
-                      {t.settings.apiKey}
-                    </label>
-                    <input
-                      type="password"
-                      value={apiConfig.apiKey}
-                      onChange={(e) => setApiConfig(prev => ({ ...prev, apiKey: e.target.value }))}
-                      placeholder={t.settings.apiKeyPlaceholder}
-                      disabled={!apiConfig.enabled}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-mono"
-                    />
+                  {/* API Configuration Fields */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                        {t.settings.baseUrl}
+                      </label>
+                      <input
+                        type="text"
+                        value={apiConfig.baseUrl}
+                        onChange={(e) => setApiConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                        placeholder={t.settings.baseUrlPlaceholder}
+                        disabled={!apiConfig.enabled}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                        {t.settings.apiKey}
+                      </label>
+                      <input
+                        type="password"
+                        value={apiConfig.apiKey}
+                        onChange={(e) => setApiConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                        placeholder={t.settings.apiKeyPlaceholder}
+                        disabled={!apiConfig.enabled}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                        {t.settings.model}
+                      </label>
+                      <input
+                        type="text"
+                        value={apiConfig.model}
+                        onChange={(e) => setApiConfig(prev => ({ ...prev, model: e.target.value }))}
+                        placeholder={t.settings.modelPlaceholder}
+                        disabled={!apiConfig.enabled}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      />
+                    </div>
                   </div>
 
+                  {/* Memoize Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="text-sm font-bold text-slate-200">{t.settings.memoize}</label>
+                      <span className="text-[11px] text-slate-500">{t.settings.memoizeHint}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMemoizeConfig(prev => !prev)}
+                      className={`relative w-14 h-7 rounded-full transition-all shrink-0 ${
+                        memoizeConfig ? 'bg-indigo-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-lg ${
+                        memoizeConfig ? 'left-8' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                </section>
+
+                <section className="space-y-4 pt-6 border-t border-slate-800">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">{t.settings.reversePromptSection}</h3>
+                    <button
+                      type="button"
+                      onClick={handleResetReversePrompt}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition-all active:scale-95"
+                    >
+                      {t.settings.restoreDefault}
+                    </button>
+                  </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
-                      {t.settings.model}
+                      {t.settings.customReversePrompt}
                     </label>
-                    <input
-                      type="text"
-                      value={apiConfig.model}
-                      onChange={(e) => setApiConfig(prev => ({ ...prev, model: e.target.value }))}
-                      placeholder={t.settings.modelPlaceholder}
-                      disabled={!apiConfig.enabled}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    <textarea
+                      value={reversePrompt}
+                      onChange={(e) => setReversePrompt(e.target.value)}
+                      placeholder={t.settings.customReversePromptPlaceholder}
+                      rows={8}
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 transition-all resize-y"
                     />
+                    <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">{t.settings.reversePromptHint}</p>
                   </div>
-                </div>
-              </div>
-
-              {/* Memoize Toggle */}
-              <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                <div className="flex flex-col gap-0.5">
-                  <label className="text-sm font-bold text-slate-200">{t.settings.memoize}</label>
-                  <span className="text-[11px] text-slate-500">{t.settings.memoizeHint}</span>
-                </div>
-                <button
-                  onClick={() => setMemoizeConfig(prev => !prev)}
-                  className={`relative w-14 h-7 rounded-full transition-all shrink-0 ${
-                    memoizeConfig ? 'bg-indigo-600' : 'bg-slate-700'
-                  }`}
-                >
-                  <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-lg ${
-                    memoizeConfig ? 'left-8' : 'left-1'
-                  }`} />
-                </button>
+                </section>
               </div>
 
               <div className="flex gap-3 mt-8">

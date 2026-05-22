@@ -1,20 +1,12 @@
 
 import { TagData, CustomAPIConfig } from "../types";
-
-// Mirrors the Gemini prompt so both providers return the same editable TagData shape.
-const TAGGING_SYSTEM_PROMPT = `You are a high-precision image captioning expert for Stable Diffusion LoRA training.
-Analyze the image provided and extract descriptive tags.
-Rules:
-1. Use Danbooru-style tags (comma-separated short phrases).
-2. Focus on physical characteristics, style, clothing, and environment.
-3. Keep tags concise.
-4. Return the data in a clean JSON format matching the schema.
-5. If the image is anime-style, identify common tropes.`;
+import { DEFAULT_REVERSE_PROMPT } from "../utils/apiConfigStore";
 
 export async function autoTagImageOpenAI(
   base64Data: string,
   mimeType: string,
-  config: CustomAPIConfig
+  config: CustomAPIConfig,
+  reversePrompt = DEFAULT_REVERSE_PROMPT
 ): Promise<TagData> {
   // Accept either a bare API root or a trailing-slash root from user settings.
   const url = config.baseUrl.endsWith('/')
@@ -32,7 +24,7 @@ export async function autoTagImageOpenAI(
       messages: [
         {
           role: 'system',
-          content: TAGGING_SYSTEM_PROMPT
+          content: reversePrompt
         },
         {
           role: 'user',
