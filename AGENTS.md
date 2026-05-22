@@ -23,6 +23,8 @@ There is currently no configured test runner or `npm test` script. For now, vali
 
 For local browser smoke tests, start `npm run dev` and open `http://localhost:3000/`. A known sample image for upload testing is `dataset/test_only/305895.jpg`. Cover the main flows: image import, image preview, parsed caption fields, manual tag editing and final preview updates, Chinese/English language switching, settings/help dialogs, crop/resize dialog controls, single `.txt` export, batch ZIP export, fullscreen final-output review modal with copy, responsive scrolling at small viewport sizes, and AI auto-caption generation when API configuration is available. Current non-blocking console findings include the Tailwind CDN development warning, and form accessibility issues for missing labels/id/name attributes.
 
+Settings smoke tests should also cover the current settings tree: `Settings` contains `API Settings` and `Reverse Prompt Settings`. Verify custom API settings still save/load when memoization is enabled, custom reverse prompts persist after refresh, and Restore Default returns the reverse prompt to the built-in default after saving.
+
 ## Commit & Pull Request Guidelines
 
 ### Commit messages
@@ -58,12 +60,19 @@ For local browser smoke tests, start `npm run dev` and open `http://localhost:30
 
 包含简要说明、验证步骤、相关 issue 链接，UI 变更附带截图或录屏。合并到 `main` 前确保工作区干净。
 
+### Tags
+
+Use lightweight Git tags for new or updated local release tags. Existing annotated tags do not need to be converted unless the tag is being updated or the user asks for conversion.
+
 ## Agent-Specific Instructions
 
 Keep generated assets and downloaded datasets scoped to `dataset/`. Do not expose API keys in logs, screenshots, commits, or generated documentation. Before broad refactors, check whether a focused update to `services/`, `utils/`, or `i18n.ts` is sufficient.
+
+Keep browser-persisted settings centralized in small stores such as `utils/apiConfigStore.ts`; avoid spreading `localStorage` access through `App.tsx`.
 
 ## Recent UI Notes
 
 - `App.tsx` now keeps the main workspace responsive: `main` scrolls vertically on smaller viewports and stays locked to a single-screen layout on `lg` and above.
 - `Final Formatted Output` includes a fullscreen review modal with copy and close controls.
 - `Resize` shows the original image size as a badge over the preview image instead of a separate right-column ratio card.
+- `Settings` now has separate `API Settings` and `Reverse Prompt Settings` sections. Reverse prompt overrides apply to both Gemini and OpenAI-compatible AI caption generation and can be restored to the built-in default.

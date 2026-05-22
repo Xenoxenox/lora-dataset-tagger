@@ -50,6 +50,8 @@ App.tsx (主组件, ~670行)
 
 ### 核心服务
 - `services/geminiService.ts` - Gemini Vision API 封装，返回结构化 TagData
+- `services/openaiCompatService.ts` - OpenAI-compatible chat-completions image tagging endpoint
+- `utils/apiConfigStore.ts` - Browser-local persistence for custom API settings, memoization, and reverse prompt overrides
 - `utils/fileUtils.ts` - Base64 转换、文件下载工具
 
 ### 数据流
@@ -64,12 +66,14 @@ character, style, clothing, expression, action, position, background, lighting, 
 
 1. **图片导入** - 多文件上传、拖放支持
 2. **AI 自动标注** - Gemini Vision 生成 Danbooru 风格标签
-3. **字段冻结** - 跨图片锁定特定标签值
-4. **图片裁剪** - Canvas 实现的宽高比裁剪
-5. **批量导出** - 单文件 `.txt` 或 ZIP 打包
-6. **最终输出审阅** - 全屏弹窗复制/关闭
-7. **Resize 辅助** - 原图尺寸 Badge 与紧凑推荐信息
-8. **国际化** - 中英双语 (浏览器自动检测)
+3. **自定义 API 设置** - 支持 OpenAI-compatible endpoint、API key、模型名和启动时记忆
+4. **反推提示语设置** - 自定义 AI caption system prompt，并可恢复内置默认值
+5. **字段冻结** - 跨图片锁定特定标签值
+6. **图片裁剪** - Canvas 实现的宽高比裁剪
+7. **批量导出** - 单文件 `.txt` 或 ZIP 打包
+8. **最终输出审阅** - 全屏弹窗复制/关闭
+9. **Resize 辅助** - 原图尺寸 Badge 与紧凑推荐信息
+10. **国际化** - 中英双语 (浏览器自动检测)
 
 ## 开发注意事项 / Development Notes
 
@@ -77,6 +81,8 @@ character, style, clothing, expression, action, position, background, lighting, 
 - Tailwind 通过 CDN 加载，无需本地编译
 - 图片以 Base64 形式传递给 Gemini API
 - 导出文件名与源图片名匹配 (image.png → image.txt)
+- 浏览器持久化设置集中在 `utils/apiConfigStore.ts`，不要把新的 `localStorage` 读写散落到 `App.tsx`
+- 新建或更新 release tag 时使用 lightweight tag；旧的 annotated tag 不必主动转换
 
 ## 训练集的存放
 训练集存放在 `.\dataset`目录
