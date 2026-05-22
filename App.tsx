@@ -4,6 +4,7 @@ import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig } from '.
 import { autoTagImage } from './services/geminiService';
 import { autoTagImageOpenAI } from './services/openaiCompatService';
 import { fileToBase64, downloadTextFile } from './utils/fileUtils';
+import { loadApiConfig, loadMemoizeConfig, saveApiConfig, saveMemoizeConfig } from './utils/apiConfigStore';
 import { translations, Language } from './i18n';
 import JSZip from 'jszip';
 
@@ -132,18 +133,11 @@ const App: React.FC = () => {
   const [resizeOriginalDimensions, setResizeOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const [memoizeConfig, setMemoizeConfig] = useState<boolean>(() => {
-    const saved = localStorage.getItem('lora_tagger_memoize');
-    return saved === null ? true : saved === 'true';
+    return loadMemoizeConfig();
   });
 
   const [apiConfig, setApiConfig] = useState<CustomAPIConfig>(() => {
-    const shouldMemoize = localStorage.getItem('lora_tagger_memoize');
-    const memoizeEnabled = shouldMemoize === null ? true : shouldMemoize === 'true';
-    if (memoizeEnabled) {
-      const saved = localStorage.getItem('lora_tagger_api_config');
-      if (saved) return JSON.parse(saved);
-    }
-    return { enabled: false, baseUrl: '', apiKey: '', model: '' };
+    return loadApiConfig();
   });
   
   const [frozenFields, setFrozenFields] = useState<Record<TagField, boolean>>({
@@ -782,12 +776,8 @@ const App: React.FC = () => {
   };
 
   const handleSaveSettings = () => {
-    localStorage.setItem('lora_tagger_memoize', String(memoizeConfig));
-    if (memoizeConfig) {
-      localStorage.setItem('lora_tagger_api_config', JSON.stringify(apiConfig));
-    } else {
-      localStorage.removeItem('lora_tagger_api_config');
-    }
+    saveMemoizeConfig(memoizeConfig);
+    saveApiConfig(apiConfig, memoizeConfig);
     setStatus({ message: t.settings.saved, type: 'success' });
     setShowSettings(false);
   };
