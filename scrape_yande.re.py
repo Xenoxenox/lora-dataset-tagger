@@ -18,7 +18,7 @@ SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # yande.re API 对默认客户端较敏感，保留明确 User-Agent 便于服务端识别请求来源。
-HEADERS = {"User-Agent": "YandeRe-API-Crawler (litardphobia@gmail.com)"}
+HEADERS = {"User-Agent": "YandeRe-API-Crawler ([YOUR EMAIL ADDRESS])"}
 
 def clean_filename(name: str) -> str:
     """清洗文件名：只保留字母数字和下划线"""
