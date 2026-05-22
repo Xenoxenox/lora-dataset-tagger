@@ -3,7 +3,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig } from './types';
 import { autoTagImage } from './services/geminiService';
 import { autoTagImageOpenAI } from './services/openaiCompatService';
-import { fileToBase64, downloadTextFile } from './utils/fileUtils';
+import { fileToBase64, downloadBlobFile, downloadTextFile } from './utils/fileUtils';
 import { loadApiConfig, loadMemoizeConfig, saveApiConfig, saveMemoizeConfig } from './utils/apiConfigStore';
 import { translations, Language } from './i18n';
 import JSZip from 'jszip';
@@ -56,6 +56,7 @@ const IconCopy = () => (
 type OperationScope = 'batch' | 'single';
 type BatchActionType = 'tagging' | 'resizing';
 type BatchImageStatus = 'queued' | 'running' | 'success' | 'failed' | 'skipped' | 'removed';
+type ExportMode = 'images' | 'captions' | 'both';
 
 type ResizeResult =
   | {
@@ -128,6 +129,7 @@ const App: React.FC = () => {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showResizeDialog, setShowResizeDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const [isOutputModalOpen, setIsOutputModalOpen] = useState(false);
   const [resizeOriginalDimensions, setResizeOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -165,7 +167,7 @@ const App: React.FC = () => {
         actions: {
           ai: 'AI打标',
           resize: '像素调整',
-          export: '导出.txt'
+          export: '导出'
         },
         tagging: {
           start: '批量 AI 打标',
@@ -210,7 +212,7 @@ const App: React.FC = () => {
         actions: {
           ai: 'AI TAG',
           resize: 'PIXEL ADJUST',
-          export: 'EXPORT .TXT'
+          export: 'EXPORT'
         },
         tagging: {
           start: 'BATCH AI TAG',
@@ -727,13 +729,6 @@ const App: React.FC = () => {
     return getFormattedCaption(currentImage);
   }, [currentImage]);
 
-  const saveTags = () => {
-    if (!currentImage || !captionText) return;
-    const name = currentImage.file.name.replace(/\.[^/.]+$/, "") + ".txt";
-    downloadTextFile(captionText, name);
-    setStatus({ message: t.statusExport(name), type: 'success' });
-  };
-
   const copyOutput = async () => {
     try {
       if (!navigator.clipboard) throw new Error('Clipboard unavailable');
@@ -744,30 +739,61 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExportAll = async () => {
-    if (images.length === 0 || isExporting) return;
+  const getExportImages = () => {
+    if (operationScope === 'single') {
+      return currentImage ? [currentImage] : [];
+    }
+
+    return images;
+  };
+
+  const addImageToZip = (zip: JSZip, image: TaggedImage) => {
+    zip.file(image.file.name, image.file);
+  };
+
+  const addCaptionToZip = (zip: JSZip, image: TaggedImage) => {
+    const caption = getFormattedCaption(image);
+    const fileName = image.file.name.replace(/\.[^/.]+$/, "") + ".txt";
+    zip.file(fileName, caption);
+  };
+
+  const createExportZip = async (exportImages: TaggedImage[], mode: ExportMode) => {
+    const zip = new JSZip();
+    exportImages.forEach(img => {
+      if (mode === 'images' || mode === 'both') addImageToZip(zip, img);
+      if (mode === 'captions' || mode === 'both') addCaptionToZip(zip, img);
+    });
+    return zip.generateAsync({ type: 'blob' });
+  };
+
+  const handleExport = async (mode: ExportMode) => {
+    if (isExporting || batchTagging.isRunning) return;
+    const exportImages = getExportImages();
+    if (exportImages.length === 0) return;
+
     setIsExporting(true);
     setStatus({ message: t.statusZipping, type: 'info' });
 
     try {
-      const zip = new JSZip();
-      images.forEach(img => {
-        const caption = getFormattedCaption(img);
-        const fileName = img.file.name.replace(/\.[^/.]+$/, "") + ".txt";
-        zip.file(fileName, caption);
-      });
-
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `lora_dataset_${new Date().getTime()}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (operationScope === 'single') {
+        const [image] = exportImages;
+        if (mode === 'captions') {
+          const caption = getFormattedCaption(image);
+          const fileName = image.file.name.replace(/\.[^/.]+$/, "") + ".txt";
+          downloadTextFile(caption, fileName);
+        } else if (mode === 'images') {
+          downloadBlobFile(image.file, image.file.name);
+        } else {
+          const blob = await createExportZip(exportImages, mode);
+          downloadBlobFile(blob, `${image.file.name.replace(/\.[^/.]+$/, "")}_dataset.zip`);
+        }
+      } else {
+        const blob = await createExportZip(exportImages, mode);
+        downloadBlobFile(blob, `lora_dataset_${new Date().getTime()}.zip`);
+      }
       
       setStatus({ message: t.statusZipSuccess, type: 'success' });
+      setShowExportDialog(false);
     } catch (e) {
       setStatus({ message: "Failed to create ZIP", type: 'error' });
     } finally {
@@ -922,6 +948,58 @@ const App: React.FC = () => {
                   {t.settings.cancel}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportDialog && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  <IconSave />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">{t.exportDialog.title}</h2>
+                  <p className="text-xs text-slate-500 font-mono uppercase mt-1">
+                    {operationScope === 'single' ? t.exportDialog.scopeSingle : t.exportDialog.scopeBatch(images.length)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {([
+                  ['images', t.exportDialog.images, t.exportDialog.imagesHint],
+                  ['captions', t.exportDialog.captions, t.exportDialog.captionsHint],
+                  ['both', t.exportDialog.both, t.exportDialog.bothHint]
+                ] as [ExportMode, string, string][]).map(([mode, label, hint]) => (
+                  <button
+                    key={mode}
+                    onClick={() => handleExport(mode)}
+                    disabled={isExporting}
+                    className="w-full flex items-center justify-between gap-4 p-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl text-left transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-slate-100">{label}</span>
+                      <span className="block text-xs text-slate-500 mt-1">{hint}</span>
+                    </span>
+                    {isExporting
+                      ? <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
+                      : <IconSave />}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setShowExportDialog(false)}
+                disabled={isExporting}
+                className="w-full mt-6 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t.exportDialog.cancel}
+              </button>
             </div>
           </div>
         </div>
@@ -1230,8 +1308,8 @@ const App: React.FC = () => {
                       : batchText.actions.resize}
                   </button>
                   <button
-                    onClick={operationScope === 'single' ? saveTags : handleExportAll}
-                    disabled={(!currentImage && operationScope === 'single') || isExporting || batchTagging.isRunning || (operationScope === 'single' && !captionText)}
+                    onClick={() => setShowExportDialog(true)}
+                    disabled={(!currentImage && operationScope === 'single') || images.length === 0 || isExporting || batchTagging.isRunning}
                     className="shrink-0 flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-xs transition-all active:scale-95 disabled:opacity-50"
                   >
                     {isExporting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <IconSave />}
