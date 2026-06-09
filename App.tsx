@@ -724,12 +724,10 @@ const App: React.FC = () => {
   }, [currentIndex, frozenFields, frozenValues, currentImage]);
 
   const getFormattedCaption = (img: TaggedImage) => {
-    // Newbie prompts treat style as an explicit style block before the remaining Danbooru tags.
     const { style, ...rest } = img.tags;
     const parts: string[] = [];
     if (style?.trim()) {
-      const s = style.trim();
-      parts.push(s.startsWith('<style>') ? s : `<style>${s}</style>`);
+      parts.push(style.trim());
     }
     const others = (Object.values(rest) as string[]).map(v => v.trim()).filter(v => !!v);
     parts.push(...others);

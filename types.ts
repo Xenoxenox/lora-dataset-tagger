@@ -30,7 +30,7 @@ export type TagField = keyof TagData;
 // Defaults are part of the NewbieLoraTrainer caption contract, not just UI placeholders.
 export const DEFAULT_TAGS: TagData = {
   character: "",
-  style: "sayori style, sayori",
+  style: "",
   clothing: "",
   expression: "",
   action: "",
@@ -39,7 +39,7 @@ export const DEFAULT_TAGS: TagData = {
   lighting: "",
   atmosphere: "",
   objects: "",
-  other: "masterpiece, best quality"
+  other: ""
 };
 
 // Optional OpenAI-compatible endpoint used when the built-in Gemini path is not desired.
