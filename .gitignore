@@ -31,5 +31,7 @@ SANDBOX_REPAIR_LOG_2026-05-17.md
 
 # Agents Directory
 .deepseek
+.claude/
+.firecrawl/newbie-ai-lora.md
 
 my_scrape_yande.re.py
