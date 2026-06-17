@@ -1,8 +1,11 @@
-import { CustomAPIConfig } from '../types';
+import { CustomAPIConfig, TaggingMode } from '../types';
+import { ADVANCED_REVERSE_PROMPT } from './advancedCaption';
 
 const MEMOIZE_KEY = 'lora_tagger_memoize';
 const API_CONFIG_KEY = 'lora_tagger_api_config';
 const REVERSE_PROMPT_KEY = 'lora_tagger_reverse_prompt';
+const ADVANCED_PROMPT_KEY = 'lora_tagger_advanced_prompt';
+const TAGGING_MODE_KEY = 'lora_tagger_tagging_mode';
 
 export const DEFAULT_API_CONFIG: CustomAPIConfig = {
   enabled: false,
@@ -91,4 +94,26 @@ export const saveReversePrompt = (prompt: string) => {
 
 export const clearReversePrompt = () => {
   removeStorage(REVERSE_PROMPT_KEY);
+};
+
+export const loadAdvancedPrompt = () => {
+  const saved = readStorage(ADVANCED_PROMPT_KEY);
+  return saved === null ? ADVANCED_REVERSE_PROMPT : saved;
+};
+
+export const saveAdvancedPrompt = (prompt: string) => {
+  writeStorage(ADVANCED_PROMPT_KEY, prompt);
+};
+
+export const clearAdvancedPrompt = () => {
+  removeStorage(ADVANCED_PROMPT_KEY);
+};
+
+export const loadTaggingMode = (): TaggingMode => {
+  const saved = readStorage(TAGGING_MODE_KEY);
+  return saved === 'advanced' ? 'advanced' : 'basic';
+};
+
+export const saveTaggingMode = (mode: TaggingMode) => {
+  writeStorage(TAGGING_MODE_KEY, mode);
 };

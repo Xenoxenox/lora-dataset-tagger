@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TagData } from "../types";
 import { DEFAULT_REVERSE_PROMPT } from "../utils/apiConfigStore";
+import { ADVANCED_REVERSE_PROMPT, assembleAdvancedCaption } from "../utils/advancedCaption";
 
 export async function autoTagImage(base64Data: string, mimeType: string, reversePrompt = DEFAULT_REVERSE_PROMPT): Promise<TagData> {
   // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
@@ -49,4 +50,35 @@ export async function autoTagImage(base64Data: string, mimeType: string, reverse
   if (!jsonStr) throw new Error("Empty response from AI");
   
   return JSON.parse(jsonStr) as TagData;
+}
+
+export async function autoTagImageAdvanced(base64Data: string, mimeType: string, advancedPrompt = ADVANCED_REVERSE_PROMPT): Promise<string> {
+  // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType,
+          },
+        },
+        {
+          text: "Analyze this image and output the advanced Newbie JSON format described by the system instruction.",
+        },
+      ],
+    },
+    config: {
+      systemInstruction: advancedPrompt,
+      responseMimeType: "application/json",
+    },
+  });
+
+  const jsonStr = response.text;
+  if (!jsonStr) throw new Error("Empty response from AI");
+
+  return assembleAdvancedCaption(jsonStr);
 }

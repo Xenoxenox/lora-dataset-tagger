@@ -1,18 +1,23 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig } from './types';
-import { autoTagImage } from './services/geminiService';
-import { autoTagImageOpenAI } from './services/openaiCompatService';
+import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig, TaggingMode } from './types';
+import { autoTagImage, autoTagImageAdvanced } from './services/geminiService';
+import { autoTagImageOpenAI, autoTagImageOpenAIAdvanced } from './services/openaiCompatService';
 import { fileToBase64, downloadBlobFile, downloadTextFile } from './utils/fileUtils';
 import {
   DEFAULT_REVERSE_PROMPT,
   loadApiConfig,
+  loadAdvancedPrompt,
   loadMemoizeConfig,
   loadReversePrompt,
+  loadTaggingMode,
   saveApiConfig,
+  saveAdvancedPrompt,
   saveMemoizeConfig,
-  saveReversePrompt
+  saveReversePrompt,
+  saveTaggingMode
 } from './utils/apiConfigStore';
+import { ADVANCED_REVERSE_PROMPT } from './utils/advancedCaption';
 import { translations, Language } from './i18n';
 import JSZip from 'jszip';
 
@@ -80,7 +85,7 @@ type ResizeResult =
       targetWidth: number;
       targetHeight: number;
       badge: string;
-      image: TaggedImage;
+      image: HTMLImageElement;
     };
 
 type BatchTaggingState = {
@@ -114,6 +119,11 @@ const loadImageElement = (src: string) => new Promise<HTMLImageElement>((resolve
   img.src = src;
 });
 
+const getErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > 180 ? `${message.slice(0, 177)}...` : message;
+};
+
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>(() => {
     const userLang = navigator.language.toLowerCase();
@@ -126,6 +136,9 @@ const App: React.FC = () => {
   const [operationScope, setOperationScope] = useState<OperationScope>(() => {
     const saved = localStorage.getItem('lora_tagger_operation_scope');
     return saved === 'single' ? 'single' : 'batch';
+  });
+  const [taggingMode, setTaggingMode] = useState<TaggingMode>(() => {
+    return loadTaggingMode();
   });
   const [isAutoTagging, setIsAutoTagging] = useState(false);
   const [autoTaggingId, setAutoTaggingId] = useState<string | null>(null);
@@ -153,6 +166,10 @@ const App: React.FC = () => {
   const [reversePrompt, setReversePrompt] = useState(() => {
     return loadReversePrompt();
   });
+
+  const [advancedPrompt, setAdvancedPrompt] = useState(() => {
+    return loadAdvancedPrompt();
+  });
   
   const [frozenFields, setFrozenFields] = useState<Record<TagField, boolean>>({
     character: false, style: false, clothing: false, expression: false,
@@ -169,6 +186,7 @@ const App: React.FC = () => {
   const isCurrentSingleAutoTagging = !!currentImage && autoTaggingId === currentImage.id;
   const isCurrentBatchTagging = batchTagging.isRunning && !!currentImage && batchTagging.currentId === currentImage.id;
   const isCurrentTaggingLocked = isCurrentSingleAutoTagging || isCurrentBatchTagging;
+  const isAdvancedMode = taggingMode === 'advanced';
   const batchProgressPercent = batchTagging.total > 0 ? (batchTagging.completed / batchTagging.total) * 100 : 0;
   const batchText = lang === 'zh'
     ? {
@@ -272,6 +290,10 @@ const App: React.FC = () => {
   }, [operationScope]);
 
   useEffect(() => {
+    saveTaggingMode(taggingMode);
+  }, [taggingMode]);
+
+  useEffect(() => {
     imagesRef.current = images;
   }, [images]);
 
@@ -323,6 +345,7 @@ const App: React.FC = () => {
         file,
         previewUrl: URL.createObjectURL(file),
         tags: initialTags,
+        advancedCaption: "",
         isAutoTagged: false,
         isEdited: false,
         isResized: false,
@@ -351,6 +374,19 @@ const App: React.FC = () => {
     }
   };
 
+  const updateAdvancedCaption = (value: string) => {
+    if (!currentImage || isCurrentTaggingLocked) return;
+    setImages(prev => {
+      const updated = [...prev];
+      updated[currentIndex] = {
+        ...updated[currentIndex],
+        isEdited: true,
+        advancedCaption: value
+      };
+      return updated;
+    });
+  };
+
   const requestAiTags = async (image: TaggedImage) => {
     const base64 = await fileToBase64(image.file);
 
@@ -359,6 +395,16 @@ const App: React.FC = () => {
       return autoTagImageOpenAI(base64, image.file.type, apiConfig, reversePrompt);
     }
     return autoTagImage(base64, image.file.type, reversePrompt);
+  };
+
+  const requestAdvancedCaption = async (image: TaggedImage) => {
+    const base64 = await fileToBase64(image.file);
+
+    // Custom endpoints must be OpenAI chat-completions compatible.
+    if (apiConfig.enabled && apiConfig.baseUrl && apiConfig.apiKey && apiConfig.model) {
+      return autoTagImageOpenAIAdvanced(base64, image.file.type, apiConfig, advancedPrompt);
+    }
+    return autoTagImageAdvanced(base64, image.file.type, advancedPrompt);
   };
 
   const getResizedImage = async (image: TaggedImage, maxSide: number): Promise<ResizeResult> => {
@@ -424,6 +470,16 @@ const App: React.FC = () => {
     return didMerge;
   };
 
+  const mergeAdvancedCaptionById = (id: string, advancedCaption: string) => {
+    let didMerge = false;
+    setImages(prev => prev.map(img => {
+      if (img.id !== id) return img;
+      didMerge = true;
+      return { ...img, advancedCaption, isAutoTagged: true };
+    }));
+    return didMerge;
+  };
+
   const handleAutoTag = async () => {
     if (!currentImage || isAutoTagging || batchTagging.isRunning) return;
     const targetImage = currentImage;
@@ -431,11 +487,18 @@ const App: React.FC = () => {
     setAutoTaggingId(targetImage.id);
     setStatus({ message: t.statusAiStart, type: 'info' });
     try {
-      const aiTags = await requestAiTags(targetImage);
-      mergeAiTagsById(targetImage.id, aiTags);
+      if (isAdvancedMode) {
+        const advancedCaption = await requestAdvancedCaption(targetImage);
+        mergeAdvancedCaptionById(targetImage.id, advancedCaption);
+      } else {
+        const aiTags = await requestAiTags(targetImage);
+        mergeAiTagsById(targetImage.id, aiTags);
+      }
       setStatus({ message: t.statusAiSuccess, type: 'success' });
     } catch (e) {
-      setStatus({ message: t.statusAiFail, type: 'error' });
+      const detail = getErrorMessage(e);
+      console.error('AI tagging failed', e);
+      setStatus({ message: t.statusAiFailDetail(detail), type: 'error' });
     } finally {
       setIsAutoTagging(false);
       setAutoTaggingId(null);
@@ -497,6 +560,7 @@ const App: React.FC = () => {
     setStatus({ message: startMessage(queue.length), type: 'info' });
 
     const counts = { completed: 0, success: 0, failed: 0, skipped: 0 };
+    let lastErrorDetail = "";
 
     for (const id of queue) {
       if (batchCancelRequestedRef.current) break;
@@ -541,6 +605,8 @@ const App: React.FC = () => {
         counts.success += 1;
         updateBatchProgress(id, 'success', counts, null);
       } catch (e) {
+        lastErrorDetail = getErrorMessage(e);
+        console.error('Batch action failed', e);
         counts.completed += 1;
         counts.failed += 1;
         updateBatchProgress(id, 'failed', counts, null);
@@ -560,10 +626,11 @@ const App: React.FC = () => {
       failed: counts.failed,
       skipped: counts.skipped
     }));
+    const finalMessage = wasCancelled
+      ? stoppedMessage(counts.success, counts.failed, counts.skipped)
+      : completeMessage(counts.success, counts.failed, counts.skipped);
     setStatus({
-      message: wasCancelled
-        ? stoppedMessage(counts.success, counts.failed, counts.skipped)
-        : completeMessage(counts.success, counts.failed, counts.skipped),
+      message: lastErrorDetail ? `${finalMessage}: ${lastErrorDetail}` : finalMessage,
       type: counts.failed > 0 ? 'error' : 'success'
     });
   };
@@ -587,12 +654,18 @@ const App: React.FC = () => {
       'tagging',
       queue,
       async (image) => {
-        const aiTags = await requestAiTags(image);
+        const aiResult = isAdvancedMode
+          ? await requestAdvancedCaption(image)
+          : await requestAiTags(image);
         const imageStillPresent = imagesRef.current.find(img => img.id === image.id);
         if (!imageStillPresent || imageStillPresent.isAutoTagged || imageStillPresent.isEdited) {
           return 'skipped';
         }
-        mergeAiTagsById(image.id, aiTags);
+        if (isAdvancedMode) {
+          mergeAdvancedCaptionById(image.id, aiResult as string);
+        } else {
+          mergeAiTagsById(image.id, aiResult as TagData);
+        }
         return 'success';
       },
       batchText.tagging.startStatus,
@@ -619,7 +692,7 @@ const App: React.FC = () => {
         imagesRef.current.map(img => img.id),
         async (image) => {
           const resizeResult = await getResizedImage(image, resizeMaxSide);
-          if (resizeResult.skipped) return 'skipped';
+          if (resizeResult.skipped === true) return 'skipped';
 
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
@@ -649,7 +722,7 @@ const App: React.FC = () => {
 
     try {
       const resizeResult = await getResizedImage(targetImage, resizeMaxSide);
-      if (resizeResult.skipped) {
+      if (resizeResult.skipped === true) {
         setShowResizeDialog(false);
         setStatus({ message: t.resize.skipped(resizeResult.width, resizeResult.height), type: 'info' });
         return;
@@ -724,6 +797,10 @@ const App: React.FC = () => {
   }, [currentIndex, frozenFields, frozenValues, currentImage]);
 
   const getFormattedCaption = (img: TaggedImage) => {
+    if (taggingMode === 'advanced') {
+      return img.advancedCaption.trim();
+    }
+
     const { style, ...rest } = img.tags;
     const parts: string[] = [];
     if (style?.trim()) {
@@ -737,7 +814,7 @@ const App: React.FC = () => {
   const captionText = useMemo(() => {
     if (!currentImage) return "";
     return getFormattedCaption(currentImage);
-  }, [currentImage]);
+  }, [currentImage, taggingMode]);
 
   const copyOutput = async () => {
     try {
@@ -815,12 +892,17 @@ const App: React.FC = () => {
     saveMemoizeConfig(memoizeConfig);
     saveApiConfig(apiConfig, memoizeConfig);
     saveReversePrompt(reversePrompt);
+    saveAdvancedPrompt(advancedPrompt);
     setStatus({ message: t.settings.saved, type: 'success' });
     setShowSettings(false);
   };
 
   const handleResetReversePrompt = () => {
     setReversePrompt(DEFAULT_REVERSE_PROMPT);
+  };
+
+  const handleResetAdvancedPrompt = () => {
+    setAdvancedPrompt(ADVANCED_REVERSE_PROMPT);
   };
 
   return (
@@ -976,6 +1058,32 @@ const App: React.FC = () => {
                       className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 transition-all resize-y"
                     />
                     <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">{t.settings.reversePromptHint}</p>
+                  </div>
+                </section>
+
+                <section className="space-y-4 pt-6 border-t border-slate-800">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">{t.settings.advancedPromptSection}</h3>
+                    <button
+                      type="button"
+                      onClick={handleResetAdvancedPrompt}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition-all active:scale-95"
+                    >
+                      {t.settings.restoreDefault}
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                      {t.settings.customAdvancedPrompt}
+                    </label>
+                    <textarea
+                      value={advancedPrompt}
+                      onChange={(e) => setAdvancedPrompt(e.target.value)}
+                      placeholder={t.settings.customAdvancedPromptPlaceholder}
+                      rows={10}
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 transition-all resize-y"
+                    />
+                    <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">{t.settings.advancedPromptHint}</p>
                   </div>
                 </section>
               </div>
@@ -1311,6 +1419,26 @@ const App: React.FC = () => {
                         {batchText.scope.single}
                       </button>
                     </div>
+                    <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+                      <button
+                        onClick={() => setTaggingMode('basic')}
+                        disabled={batchTagging.isRunning || isAutoTagging}
+                        className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition ${
+                          taggingMode === 'basic' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {t.taggingMode.basic}
+                      </button>
+                      <button
+                        onClick={() => setTaggingMode('advanced')}
+                        disabled={batchTagging.isRunning || isAutoTagging}
+                        className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition ${
+                          taggingMode === 'advanced' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {t.taggingMode.advanced}
+                      </button>
+                    </div>
                   </div>
                   <div className="shrink-0 text-[11px] font-mono text-slate-500 uppercase text-right">
                     {batchTagging.isRunning || batchTagging.total > 0
@@ -1379,6 +1507,11 @@ const App: React.FC = () => {
                   <div className="text-xs font-mono leading-relaxed text-indigo-300/90 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-8 whitespace-pre-wrap break-all">
                     {captionText || <span className="text-slate-700 italic">{t.placeholder}</span>}
                   </div>
+                  {isAdvancedMode && (
+                    <div className="absolute bottom-2 inset-x-3 text-[10px] font-mono text-slate-600 text-right pointer-events-none">
+                      {t.advancedCharCount(captionText.length)}
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -1400,6 +1533,20 @@ const App: React.FC = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar pb-20">
             {currentImage ? (
+              isAdvancedMode ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{t.advancedCaptionLabel}</label>
+                  </div>
+                  <textarea
+                    value={currentImage.advancedCaption}
+                    onChange={(e) => updateAdvancedCaption(e.target.value)}
+                    placeholder={t.advancedCaptionPlaceholder}
+                    disabled={isCurrentTaggingLocked}
+                    className="w-full min-h-[420px] bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs leading-relaxed font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/5 transition-all disabled:opacity-60 disabled:cursor-not-allowed resize-y"
+                  />
+                </div>
+              ) : (
               (Object.keys(currentImage.tags) as TagField[]).map(field => (
                 <div key={field} className="flex flex-col gap-2">
                   <div className="flex items-center justify-between px-1">
@@ -1427,7 +1574,7 @@ const App: React.FC = () => {
                     } disabled:opacity-60 disabled:cursor-not-allowed`}
                   />
                 </div>
-              ))
+              )))
             ) : (
               <div className="py-20 text-center text-xs text-slate-600 italic">{t.propertiesHint}</div>
             )}

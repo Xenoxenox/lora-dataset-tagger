@@ -12,6 +12,13 @@ export const translations = {
     exportAll: "BATCH EXPORT (ZIP)",
     outputHeader: "Final Formatted Output",
     editorHeader: "Tag Editor",
+    taggingMode: {
+      basic: "Basic",
+      advanced: "Advanced"
+    },
+    advancedCaptionLabel: "Advanced XML Caption",
+    advancedCaptionPlaceholder: "Paste or generate Newbie XML tags, followed by caption text...",
+    advancedCharCount: (count: number) => `${count} chars · 512-token training limit reminder`,
     freeze: "FREEZE",
     frozen: "FROZEN",
     step: "STEP",
@@ -23,6 +30,7 @@ export const translations = {
     statusAiStart: "AI analyzing image...",
     statusAiSuccess: "Auto-tagging complete!",
     statusAiFail: "AI process failed.",
+    statusAiFailDetail: (detail: string) => `AI process failed: ${detail}`,
     statusExport: (name: string) => `Exported ${name}`,
     statusZipping: "Preparing export...",
     statusZipSuccess: "Dataset exported successfully!",
@@ -95,6 +103,10 @@ export const translations = {
       customReversePrompt: "Custom Reverse Prompt",
       customReversePromptPlaceholder: "Describe how the AI should analyze images and return tag JSON.",
       reversePromptHint: "Used by Gemini and custom OpenAI-compatible endpoints for AI caption generation.",
+      advancedPromptSection: "Advanced Prompt Settings",
+      customAdvancedPrompt: "Custom Advanced Prompt",
+      customAdvancedPromptPlaceholder: "Describe how the AI should return Newbie XML JSON with tags and caption.",
+      advancedPromptHint: "Used only in Advanced mode. The API response is parsed into XML tags plus caption text.",
       restoreDefault: "Restore Default"
     }
   },
@@ -108,6 +120,13 @@ export const translations = {
     exportAll: "批量导出 (ZIP)",
     outputHeader: "最终格式化输出预览",
     editorHeader: "标签编辑器",
+    taggingMode: {
+      basic: "基础打标",
+      advanced: "进阶打标"
+    },
+    advancedCaptionLabel: "进阶 XML 全标",
+    advancedCaptionPlaceholder: "粘贴或生成 Newbie XML 标签，并接 caption 文本...",
+    advancedCharCount: (count: number) => `${count} 字符 · 512 token 训练上限提醒`,
     freeze: "冻结",
     frozen: "已冻结",
     step: "张数",
@@ -119,6 +138,7 @@ export const translations = {
     statusAiStart: "AI 正在分析图片...",
     statusAiSuccess: "自动打标完成！",
     statusAiFail: "AI 生成失败",
+    statusAiFailDetail: (detail: string) => `AI 生成失败：${detail}`,
     statusExport: (name: string) => `已导出 ${name}`,
     statusZipping: "正在准备导出...",
     statusZipSuccess: "数据集导出成功！",
@@ -191,6 +211,10 @@ export const translations = {
       customReversePrompt: "自定义反推提示语",
       customReversePromptPlaceholder: "描述 AI 应如何分析图片并返回标签 JSON。",
       reversePromptHint: "用于 Gemini 和自定义 OpenAI 兼容接口的 AI 自动打标。",
+      advancedPromptSection: "进阶提示词设置",
+      customAdvancedPrompt: "自定义进阶提示词",
+      customAdvancedPromptPlaceholder: "描述 AI 应如何返回包含 XML tags 和 caption 的 Newbie JSON。",
+      advancedPromptHint: "仅用于进阶打标模式。API 响应会解析为 XML 标签加 caption 文本。",
       restoreDefault: "恢复默认"
     }
   }
