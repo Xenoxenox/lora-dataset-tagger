@@ -19,6 +19,7 @@ export interface TaggedImage {
   file: File;
   previewUrl: string;
   tags: TagData;
+  advancedCaption: string;
   isAutoTagged: boolean;
   isEdited: boolean;
   isResized: boolean;
@@ -49,3 +50,5 @@ export interface CustomAPIConfig {
   apiKey: string;
   model: string;
 }
+
+export type TaggingMode = 'basic' | 'advanced';
