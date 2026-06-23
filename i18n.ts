@@ -19,6 +19,15 @@ export const translations = {
     advancedCaptionLabel: "Advanced XML Caption",
     advancedCaptionPlaceholder: "Paste or generate Newbie XML tags, followed by caption text...",
     advancedCharCount: (count: number) => `${count} chars · 512-token training limit reminder`,
+    advancedTraining: {
+      style: "Style Training",
+      character: "Character Training",
+      lockArtists: "Lock Artists",
+      lockStyle: "Lock Style",
+      lockCharacter: "Lock Char Name",
+      nominate: "Nominate",
+      confirmNames: "Confirm Names"
+    },
     freeze: "FREEZE",
     frozen: "FROZEN",
     step: "STEP",
@@ -127,6 +136,15 @@ export const translations = {
     advancedCaptionLabel: "进阶 XML 全标",
     advancedCaptionPlaceholder: "粘贴或生成 Newbie XML 标签，并接 caption 文本...",
     advancedCharCount: (count: number) => `${count} 字符 · 512 token 训练上限提醒`,
+    advancedTraining: {
+      style: "风格训练",
+      character: "角色训练",
+      lockArtists: "锁定画师",
+      lockStyle: "锁定风格",
+      lockCharacter: "锁定角色名",
+      nominate: "待命名",
+      confirmNames: "确认名称"
+    },
     freeze: "冻结",
     frozen: "已冻结",
     step: "张数",

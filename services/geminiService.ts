@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TagData } from "../types";
 import { DEFAULT_REVERSE_PROMPT } from "../utils/apiConfigStore";
-import { ADVANCED_REVERSE_PROMPT, assembleAdvancedCaption } from "../utils/advancedCaption";
+import { ADVANCED_REVERSE_PROMPT, assembleAdvancedCaption, stripJsonFence, validateAdvancedJson } from "../utils/advancedCaption";
 
 export async function autoTagImage(base64Data: string, mimeType: string, reversePrompt = DEFAULT_REVERSE_PROMPT): Promise<TagData> {
   // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
@@ -56,29 +56,35 @@ export async function autoTagImageAdvanced(base64Data: string, mimeType: string,
   // Vite injects GEMINI_API_KEY as process.env.API_KEY in vite.config.ts.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType,
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: mimeType,
+            },
           },
-        },
-        {
-          text: "Analyze this image and output the advanced Newbie JSON format described by the system instruction.",
-        },
-      ],
-    },
-    config: {
-      systemInstruction: advancedPrompt,
-      responseMimeType: "application/json",
-    },
-  });
+          {
+            text: "Analyze this image and output the advanced Newbie JSON format described by the system instruction.",
+          },
+        ],
+      },
+      config: {
+        systemInstruction: advancedPrompt,
+        responseMimeType: "application/json",
+      },
+    });
 
-  const jsonStr = response.text;
-  if (!jsonStr) throw new Error("Empty response from AI");
-
-  return assembleAdvancedCaption(jsonStr);
+    const jsonStr = response.text ?? '';
+    try {
+      const parsed = JSON.parse(stripJsonFence(jsonStr));
+      if (validateAdvancedJson(parsed)) return assembleAdvancedCaption(jsonStr);
+    } catch {
+      // Retry once on malformed advanced JSON.
+    }
+  }
+  throw new Error("Advanced tagging failed validation after 2 attempts");
 }

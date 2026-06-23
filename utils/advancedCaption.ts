@@ -1,3 +1,7 @@
+import type { AdvancedFrozenField } from '../types';
+
+export type AdvancedCaptionField = AdvancedFrozenField | `character_${number}_name`;
+
 export const ADVANCED_REVERSE_PROMPT = `Please annotate each character in the image and provide image tag information in JSON format, along with a detailed description of the scene.
 
 [Character Identification and Annotation]
@@ -56,6 +60,60 @@ export const stripJsonFence = (text: string) => {
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
+};
+
+const fieldRegex = (field: AdvancedCaptionField) => {
+  if (field === 'artists') return /<artists>([\s\S]*?)<\/artists>/;
+  if (field === 'style') return /<style>([\s\S]*?)<\/style>/;
+  const match = /^character_(\d+)_name$/.exec(field);
+  if (match) return new RegExp(`<character_${match[1]}>[\\s\\S]*?<n>([\\s\\S]*?)<\\/n>`);
+  return null;
+};
+
+export const extractAdvancedField = (caption: string, field: AdvancedFrozenField): string => {
+  const match = caption.match(fieldRegex(field) ?? /$^/);
+  return match?.[1]?.trim() ?? "";
+};
+
+export const injectAdvancedField = (caption: string, field: AdvancedCaptionField, value: string): string => {
+  const cleanValue = value.trim();
+  if (!cleanValue) return caption;
+
+  const regex = fieldRegex(field);
+  if ((field === 'artists' || field === 'style') && regex?.test(caption)) {
+    return caption.replace(regex, (match) => match.replace(/>([\s\S]*?)<\//, `>${cleanValue}</`));
+  }
+
+  if (field === 'artists' || field === 'style') {
+    const node = `<${field}>${cleanValue}</${field}>`;
+    return /<general_tags>[\s\S]*?<\/general_tags>/.test(caption)
+      ? caption.replace(/<\/general_tags>/, `${node}</general_tags>`)
+      : `${caption}<general_tags>${node}</general_tags>`;
+  }
+
+  const slot = /^character_(\d+)_name$/.exec(field)?.[1] ?? '1';
+  const nameRegex = new RegExp(`(<character_${slot}>[\\s\\S]*?<n>)[\\s\\S]*?(<\\/n>)`);
+  if (nameRegex.test(caption)) {
+    return caption.replace(nameRegex, `$1${cleanValue}$2`);
+  }
+
+  const characterRegex = new RegExp(`(<character_${slot}>[\\s\\S]*?)(<\\/character_${slot}>)`);
+  if (characterRegex.test(caption)) {
+    return caption.replace(characterRegex, `$1<n>${cleanValue}</n>$2`);
+  }
+  return `${caption}<character_${slot}><n>${cleanValue}</n></character_${slot}>`;
+};
+
+export const validateAdvancedJson = (parsed: unknown): boolean => {
+  const image = (parsed as { image?: { tags?: unknown; caption?: unknown } } | null)?.image;
+  return typeof image?.tags === 'string'
+    && image.tags.trim().length > 0
+    && typeof image.caption === 'string';
+};
+
+export const detectCharacterSlots = (caption: string): string[] => {
+  return [...caption.matchAll(/<character_(\d+)>[\s\S]*?<\/character_\1>/g)]
+    .map(match => `character_${match[1]}`);
 };
 
 const textValue = (value: unknown) => {
