@@ -370,16 +370,11 @@ const App: React.FC = () => {
   };
 
   const toggleAdvancedFreeze = (field: AdvancedFrozenField) => {
-    setAdvancedFrozenFields(prev => {
-      const isNowLocked = !prev[field];
-      if (isNowLocked && currentImage) {
-        setAdvancedFrozenValues(v => ({
-          ...v,
-          [field]: extractAdvancedField(currentImage.advancedCaption, field)
-        }));
-      }
-      return { ...prev, [field]: isNowLocked };
-    });
+    setAdvancedFrozenFields(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const setAdvancedFrozenValue = (field: AdvancedFrozenField, value: string) => {
+    setAdvancedFrozenValues(prev => ({ ...prev, [field]: value }));
   };
 
   const confirmNomination = () => {
@@ -557,6 +552,14 @@ const App: React.FC = () => {
           pendingNomination = { slots };
         } else {
           mergedCaption = injectAdvancedField(mergedCaption, field, value);
+        }
+      });
+
+      advancedLockFields.forEach(field => {
+        if (advancedFrozenFields[field]) return;
+        const value = extractAdvancedField(mergedCaption, field);
+        if (value) {
+          setAdvancedFrozenValues(prevValues => ({ ...prevValues, [field]: value }));
         }
       });
 
@@ -1664,7 +1667,7 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {advancedLockFields.map(field => {
                         const label = field === 'artists'
                           ? t.advancedTraining.lockArtists
@@ -1672,18 +1675,31 @@ const App: React.FC = () => {
                             ? t.advancedTraining.lockStyle
                             : t.advancedTraining.lockCharacter;
                         return (
-                          <button
-                            key={field}
-                            type="button"
-                            onClick={() => toggleAdvancedFreeze(field)}
-                            disabled={isCurrentTaggingLocked}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all text-[9px] font-bold border ${
-                              advancedFrozenFields[field] ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-400 border-transparent hover:border-slate-700'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                          >
-                            <IconLock locked={!!advancedFrozenFields[field]} />
-                            {advancedFrozenFields[field] ? t.frozen : label}
-                          </button>
+                          <label key={field} className="grid grid-cols-[92px_minmax(0,1fr)_32px] items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] truncate">{label}</span>
+                            <input
+                              value={advancedFrozenValues[field] ?? ''}
+                              onChange={(e) => setAdvancedFrozenValue(field, e.target.value)}
+                              disabled={isCurrentTaggingLocked}
+                              className={`min-w-0 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono text-slate-200 focus:outline-none transition ${
+                                advancedFrozenFields[field]
+                                  ? 'border-amber-500/30 focus:border-amber-400/60'
+                                  : 'border-slate-800 focus:border-indigo-500/50'
+                              } disabled:opacity-60 disabled:cursor-not-allowed`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleAdvancedFreeze(field)}
+                              disabled={isCurrentTaggingLocked}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                                advancedFrozenFields[field] ? 'bg-amber-500/20 border-amber-500/30' : 'bg-slate-800 border-transparent hover:border-slate-700'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              title={advancedFrozenFields[field] ? t.frozen : t.freeze}
+                              aria-label={advancedFrozenFields[field] ? t.frozen : t.freeze}
+                            >
+                              <IconLock locked={!!advancedFrozenFields[field]} />
+                            </button>
+                          </label>
                         );
                       })}
                     </div>
