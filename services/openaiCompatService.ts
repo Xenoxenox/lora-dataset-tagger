@@ -1,7 +1,7 @@
 
 import { TagData, CustomAPIConfig } from "../types";
 import { DEFAULT_REVERSE_PROMPT } from "../utils/apiConfigStore";
-import { ADVANCED_REVERSE_PROMPT, assembleAdvancedCaption, stripJsonFence } from "../utils/advancedCaption";
+import { ADVANCED_REVERSE_PROMPT, assembleAdvancedCaption, stripJsonFence, validateAdvancedJson } from "../utils/advancedCaption";
 
 export async function autoTagImageOpenAI(
   base64Data: string,
@@ -76,51 +76,55 @@ export async function autoTagImageOpenAIAdvanced(
     ? `${config.baseUrl}chat/completions`
     : `${config.baseUrl}/chat/completions`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        {
-          role: 'system',
-          content: advancedPrompt
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Analyze this image and output ONLY valid JSON in this exact shape: {"character_1":{"bbox":[x1,y1,x2,y2],"name":"$character_1$"},"image":{"tags":"<character_1>...</character_1><general_tags>...</general_tags>","caption":"Extremely detailed English description, >=200 words."}}. The image.tags string must contain XML tags. Do not use image_analysis or any alternate schema.'
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${mimeType};base64,${base64Data}`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: advancedPrompt
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this image and output ONLY valid JSON in this exact shape: {"character_1":{"bbox":[x1,y1,x2,y2],"name":"$character_1$"},"image":{"tags":"<character_1>...</character_1><general_tags>...</general_tags>","caption":"Extremely detailed English description, >=200 words."}}. The image.tags string must contain XML tags. Do not use image_analysis or any alternate schema.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Data}`
+                }
               }
-            }
-          ]
-        }
-      ],
-      max_tokens: 3000,
-      temperature: 0.7
-    })
-  });
+            ]
+          }
+        ],
+        max_tokens: 3000,
+        temperature: 0.7
+      })
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API request failed: ${response.status} ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content ?? '';
+
+    try {
+      const parsed = JSON.parse(stripJsonFence(content));
+      if (validateAdvancedJson(parsed)) return assembleAdvancedCaption(content);
+    } catch {
+      // Retry once on malformed advanced JSON.
+    }
   }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("Empty response from API");
-  }
-
-  return assembleAdvancedCaption(content);
+  throw new Error("Advanced tagging failed validation after 2 attempts");
 }

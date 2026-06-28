@@ -1,4 +1,4 @@
-import { CustomAPIConfig, TaggingMode } from '../types';
+import { AdvancedFrozenField, AdvancedTrainingScenario, CustomAPIConfig, TaggingMode } from '../types';
 import { ADVANCED_REVERSE_PROMPT } from './advancedCaption';
 
 const MEMOIZE_KEY = 'lora_tagger_memoize';
@@ -6,6 +6,9 @@ const API_CONFIG_KEY = 'lora_tagger_api_config';
 const REVERSE_PROMPT_KEY = 'lora_tagger_reverse_prompt';
 const ADVANCED_PROMPT_KEY = 'lora_tagger_advanced_prompt';
 const TAGGING_MODE_KEY = 'lora_tagger_tagging_mode';
+const ADVANCED_TRAINING_SCENARIO_KEY = 'lora_tagger_advanced_training_scenario';
+const ADVANCED_FROZEN_FIELDS_KEY = 'lora_tagger_advanced_frozen_fields';
+const ADVANCED_FROZEN_VALUES_KEY = 'lora_tagger_advanced_frozen_values';
 
 export const DEFAULT_API_CONFIG: CustomAPIConfig = {
   enabled: false,
@@ -116,4 +119,36 @@ export const loadTaggingMode = (): TaggingMode => {
 
 export const saveTaggingMode = (mode: TaggingMode) => {
   writeStorage(TAGGING_MODE_KEY, mode);
+};
+
+export const loadAdvancedTrainingScenario = (): AdvancedTrainingScenario => {
+  return readStorage(ADVANCED_TRAINING_SCENARIO_KEY) === 'character' ? 'character' : 'style';
+};
+
+export const saveAdvancedTrainingScenario = (scenario: AdvancedTrainingScenario) => {
+  writeStorage(ADVANCED_TRAINING_SCENARIO_KEY, scenario);
+};
+
+export const loadAdvancedFrozenFields = (): Partial<Record<AdvancedFrozenField, boolean>> => {
+  try {
+    return JSON.parse(readStorage(ADVANCED_FROZEN_FIELDS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+export const saveAdvancedFrozenFields = (fields: Partial<Record<AdvancedFrozenField, boolean>>) => {
+  writeStorage(ADVANCED_FROZEN_FIELDS_KEY, JSON.stringify(fields));
+};
+
+export const loadAdvancedFrozenValues = (): Partial<Record<AdvancedFrozenField, string>> => {
+  try {
+    return JSON.parse(readStorage(ADVANCED_FROZEN_VALUES_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+export const saveAdvancedFrozenValues = (values: Partial<Record<AdvancedFrozenField, string>>) => {
+  writeStorage(ADVANCED_FROZEN_VALUES_KEY, JSON.stringify(values));
 };

@@ -20,6 +20,7 @@ export interface TaggedImage {
   previewUrl: string;
   tags: TagData;
   advancedCaption: string;
+  pendingNomination?: { slots: string[] };
   isAutoTagged: boolean;
   isEdited: boolean;
   isResized: boolean;
@@ -52,3 +53,5 @@ export interface CustomAPIConfig {
 }
 
 export type TaggingMode = 'basic' | 'advanced';
+export type AdvancedFrozenField = 'artists' | 'style' | 'character_1_name';
+export type AdvancedTrainingScenario = 'style' | 'character';

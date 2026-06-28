@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig, TaggingMode } from './types';
+import { AdvancedFrozenField, AdvancedTrainingScenario, TagData, TaggedImage, TagField, DEFAULT_TAGS, CustomAPIConfig, TaggingMode } from './types';
 import { autoTagImage, autoTagImageAdvanced } from './services/geminiService';
 import { autoTagImageOpenAI, autoTagImageOpenAIAdvanced } from './services/openaiCompatService';
 import { fileToBase64, downloadBlobFile, downloadTextFile } from './utils/fileUtils';
@@ -8,16 +8,22 @@ import {
   DEFAULT_REVERSE_PROMPT,
   loadApiConfig,
   loadAdvancedPrompt,
+  loadAdvancedFrozenFields,
+  loadAdvancedFrozenValues,
+  loadAdvancedTrainingScenario,
   loadMemoizeConfig,
   loadReversePrompt,
   loadTaggingMode,
   saveApiConfig,
+  saveAdvancedFrozenFields,
+  saveAdvancedFrozenValues,
   saveAdvancedPrompt,
+  saveAdvancedTrainingScenario,
   saveMemoizeConfig,
   saveReversePrompt,
   saveTaggingMode
 } from './utils/apiConfigStore';
-import { ADVANCED_REVERSE_PROMPT } from './utils/advancedCaption';
+import { ADVANCED_REVERSE_PROMPT, extractAdvancedField, injectAdvancedField, detectCharacterSlots } from './utils/advancedCaption';
 import { translations, Language } from './i18n';
 import JSZip from 'jszip';
 
@@ -170,6 +176,16 @@ const App: React.FC = () => {
   const [advancedPrompt, setAdvancedPrompt] = useState(() => {
     return loadAdvancedPrompt();
   });
+  const [advancedTrainingScenario, setAdvancedTrainingScenario] = useState<AdvancedTrainingScenario>(() => {
+    return loadAdvancedTrainingScenario();
+  });
+  const [advancedFrozenFields, setAdvancedFrozenFields] = useState<Partial<Record<AdvancedFrozenField, boolean>>>(() => {
+    return loadAdvancedFrozenFields();
+  });
+  const [advancedFrozenValues, setAdvancedFrozenValues] = useState<Partial<Record<AdvancedFrozenField, string>>>(() => {
+    return loadAdvancedFrozenValues();
+  });
+  const [nominationNames, setNominationNames] = useState<Record<string, string>>({});
   
   const [frozenFields, setFrozenFields] = useState<Record<TagField, boolean>>({
     character: false, style: false, clothing: false, expression: false,
@@ -187,6 +203,9 @@ const App: React.FC = () => {
   const isCurrentBatchTagging = batchTagging.isRunning && !!currentImage && batchTagging.currentId === currentImage.id;
   const isCurrentTaggingLocked = isCurrentSingleAutoTagging || isCurrentBatchTagging;
   const isAdvancedMode = taggingMode === 'advanced';
+  const advancedLockFields: AdvancedFrozenField[] = advancedTrainingScenario === 'style'
+    ? ['artists', 'style']
+    : ['character_1_name'];
   const batchProgressPercent = batchTagging.total > 0 ? (batchTagging.completed / batchTagging.total) * 100 : 0;
   const batchText = lang === 'zh'
     ? {
@@ -294,8 +313,28 @@ const App: React.FC = () => {
   }, [taggingMode]);
 
   useEffect(() => {
+    saveAdvancedTrainingScenario(advancedTrainingScenario);
+  }, [advancedTrainingScenario]);
+
+  useEffect(() => {
+    saveAdvancedFrozenFields(advancedFrozenFields);
+  }, [advancedFrozenFields]);
+
+  useEffect(() => {
+    saveAdvancedFrozenValues(advancedFrozenValues);
+  }, [advancedFrozenValues]);
+
+  useEffect(() => {
     imagesRef.current = images;
   }, [images]);
+
+  useEffect(() => {
+    const slots = currentImage?.pendingNomination?.slots ?? [];
+    setNominationNames(slots.reduce<Record<string, string>>((acc, slot) => {
+      acc[slot] = nominationNames[slot] ?? '';
+      return acc;
+    }, {}));
+  }, [currentImage?.id, currentImage?.pendingNomination]);
 
   const closeTutorial = () => {
     localStorage.setItem('lora_tagger_tutorial_seen', 'true');
@@ -328,6 +367,28 @@ const App: React.FC = () => {
       }
       return { ...prev, [field]: isNowLocked };
     });
+  };
+
+  const toggleAdvancedFreeze = (field: AdvancedFrozenField) => {
+    setAdvancedFrozenFields(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const setAdvancedFrozenValue = (field: AdvancedFrozenField, value: string) => {
+    setAdvancedFrozenValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const confirmNomination = () => {
+    if (!currentImage?.pendingNomination || isCurrentTaggingLocked) return;
+
+    setImages(prev => prev.map(img => {
+      if (img.id !== currentImage.id || !img.pendingNomination) return img;
+      const advancedCaption = img.pendingNomination.slots.reduce((caption, slot) => {
+        const value = nominationNames[slot]?.trim();
+        return value ? injectAdvancedField(caption, `${slot}_name` as `character_${number}_name`, value) : caption;
+      }, img.advancedCaption);
+      return { ...img, advancedCaption, pendingNomination: undefined, isEdited: true };
+    }));
+    setNominationNames({});
   };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -475,7 +536,34 @@ const App: React.FC = () => {
     setImages(prev => prev.map(img => {
       if (img.id !== id) return img;
       didMerge = true;
-      return { ...img, advancedCaption, isAutoTagged: true };
+      let mergedCaption = advancedCaption;
+      let pendingNomination: TaggedImage['pendingNomination'] = undefined;
+
+      (Object.keys(advancedFrozenFields) as AdvancedFrozenField[]).forEach(field => {
+        if (!advancedFrozenFields[field]) return;
+        const value = advancedFrozenValues[field] ?? '';
+        if (field !== 'character_1_name' || advancedTrainingScenario === 'style') {
+          mergedCaption = injectAdvancedField(mergedCaption, field, value);
+          return;
+        }
+
+        const slots = detectCharacterSlots(mergedCaption);
+        if (slots.length > 1) {
+          pendingNomination = { slots };
+        } else {
+          mergedCaption = injectAdvancedField(mergedCaption, field, value);
+        }
+      });
+
+      advancedLockFields.forEach(field => {
+        if (advancedFrozenFields[field]) return;
+        const value = extractAdvancedField(mergedCaption, field);
+        if (value) {
+          setAdvancedFrozenValues(prevValues => ({ ...prevValues, [field]: value }));
+        }
+      });
+
+      return { ...img, advancedCaption: mergedCaption, pendingNomination, isAutoTagged: true };
     }));
     return didMerge;
   };
@@ -1319,6 +1407,11 @@ const App: React.FC = () => {
                       {t.tagged}
                     </div>
                   )}
+                  {img.pendingNomination && (
+                    <div className="absolute top-1 right-1 bg-amber-600 text-white text-[8px] px-1.5 py-0.5 rounded font-bold shadow-md uppercase border border-amber-400/50">
+                      {t.advancedTraining.nominate}
+                    </div>
+                  )}
                   {!isTagged && isResized && img.resizeBadge && (
                     <div className="absolute top-1 left-1 bg-indigo-600/90 text-white text-[8px] px-1.5 py-0.5 rounded font-bold shadow-md uppercase border border-indigo-400/50">
                       {img.resizeBadge}
@@ -1534,7 +1627,84 @@ const App: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar pb-20">
             {currentImage ? (
               isAdvancedMode ? (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
+                  <div className="inline-flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+                    {(['style', 'character'] as AdvancedTrainingScenario[]).map(scenario => (
+                      <button
+                        key={scenario}
+                        type="button"
+                        onClick={() => setAdvancedTrainingScenario(scenario)}
+                        disabled={isCurrentTaggingLocked}
+                        className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition ${
+                          advancedTrainingScenario === scenario ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {scenario === 'style' ? t.advancedTraining.style : t.advancedTraining.character}
+                      </button>
+                    ))}
+                  </div>
+
+                  {currentImage.pendingNomination ? (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-3">
+                      {currentImage.pendingNomination.slots.map(slot => (
+                        <label key={slot} className="flex flex-col gap-1">
+                          <span className="text-[10px] font-black text-amber-300 uppercase tracking-[0.18em]">{slot}</span>
+                          <input
+                            value={nominationNames[slot] ?? ''}
+                            onChange={(e) => setNominationNames(prev => ({ ...prev, [slot]: e.target.value }))}
+                            disabled={isCurrentTaggingLocked}
+                            className="w-full bg-slate-950 border border-amber-500/20 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-400/50 disabled:opacity-60"
+                          />
+                        </label>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={confirmNomination}
+                        disabled={isCurrentTaggingLocked}
+                        className="w-full px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wider transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {t.advancedTraining.confirmNames}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {advancedLockFields.map(field => {
+                        const label = field === 'artists'
+                          ? t.advancedTraining.lockArtists
+                          : field === 'style'
+                            ? t.advancedTraining.lockStyle
+                            : t.advancedTraining.lockCharacter;
+                        return (
+                          <label key={field} className="grid grid-cols-[92px_minmax(0,1fr)_32px] items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] truncate">{label}</span>
+                            <input
+                              value={advancedFrozenValues[field] ?? ''}
+                              onChange={(e) => setAdvancedFrozenValue(field, e.target.value)}
+                              disabled={isCurrentTaggingLocked}
+                              className={`min-w-0 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono text-slate-200 focus:outline-none transition ${
+                                advancedFrozenFields[field]
+                                  ? 'border-amber-500/30 focus:border-amber-400/60'
+                                  : 'border-slate-800 focus:border-indigo-500/50'
+                              } disabled:opacity-60 disabled:cursor-not-allowed`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleAdvancedFreeze(field)}
+                              disabled={isCurrentTaggingLocked}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                                advancedFrozenFields[field] ? 'bg-amber-500/20 border-amber-500/30' : 'bg-slate-800 border-transparent hover:border-slate-700'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              title={advancedFrozenFields[field] ? t.frozen : t.freeze}
+                              aria-label={advancedFrozenFields[field] ? t.frozen : t.freeze}
+                            >
+                              <IconLock locked={!!advancedFrozenFields[field]} />
+                            </button>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{t.advancedCaptionLabel}</label>
                   </div>
